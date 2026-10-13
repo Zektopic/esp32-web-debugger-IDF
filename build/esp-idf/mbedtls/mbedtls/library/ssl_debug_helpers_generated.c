@@ -1,1 +1,0 @@
-/home/manupa/esp/v5.1.3/esp-idf/components/mbedtls/mbedtls/library/ssl_debug_helpers_generated.c
