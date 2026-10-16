@@ -1,342 +1,588 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>ESP32 Web Debugger</title>
-  <style>
-    body {
-      margin: 0;
-      font-family: "Segoe UI", sans-serif;
-      background-color: #121212;
-      color: #eee;
-    }
-    header {
-      text-align: center;
-      padding: 1em;
-      font-size: 1.8em;
-      background: linear-gradient(90deg, #03a9f4, #0d47a1);
-      color: white;
-      box-shadow: 0 0 20px #0d47a1;
-    }
-    #vin {
-      text-align: center;
-      font-size: 1.2em;
-      margin: 1em 0;
-    }
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-      gap: 1em;
-      padding: 1em;
-    }
-    .pin {
-      border: 1px solid #333;
-      border-radius: 12px;
-      padding: 1em;
-      background-color: #1e1e1e;
-      box-shadow: 0 0 10px #03a9f4aa;
-    }
-    .title {
-      font-size: 1.1em;
-      margin-bottom: 0.5em;
-      color: #03a9f4;
-    }
-    .state {
-      margin: 0.5em 0;
-    }
-    .bounce {
-      font-size: 0.9em;
-      color: #ccc;
-      margin-top: 4px;
-    }
-    button, select, input[type='number'], input[type='text'] {
-      margin-top: 0.2em;
-      background-color: #03a9f4;
-      border: none;
-      border-radius: 6px;
-      color: white;
-      padding: 6px 10px;
-      cursor: pointer;
-      font-weight: bold;
-    }
-    button:hover, select:hover {
-      background-color: #0288d1;
-    }
-    select, input[type='number'], input[type='text'] {
-      width: 100%;
-    }
-    #log {
-      padding: 1em;
-      background: #000;
-      color: #0f0;
-      font-family: monospace;
-      max-height: 200px;
-      overflow-y: auto;
-      white-space: pre-wrap;
-      margin: 1em;
-      border: 1px solid #222;
-    }
-    #clearLog {
-      display: block;
-      margin: 0 auto;
-      background: #d32f2f;
-      color: white;
-      margin-bottom: 1em;
-    }
-    #oscilloContainer {
-      position: relative;
-      width: 300px;
-      height: 120px;
-      margin: 1em auto;
-      background: #1e1e1e;
-      border: 1px solid #444;
-    }
-    #oscilloGraph {
-      width: 100%;
-      height: 100%;
-    }
-    #oscilloScale {
-      position: absolute;
-      left: 5px;
-      top: 5px;
-      color: #ccc;
-      font-size: 12px;
-      font-family: monospace;
-      line-height: 1.3;
-    }
-    .section {
-      margin: 1em auto;
-      padding: 1em;
-      width: 90%;
-      background: #1c1c1c;
-      border: 1px solid #444;
-    }
-    .section h3 {
-      margin-top: 0;
-    }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="dark">
+<link rel="icon" href="data:,">
+<title>ESP32 Web Debugger</title>
+<style>
+:root{--bg:#121212;--panel:#1c1c1c;--card:#1e1e1e;--line:#333;--text:#eee;--dim:#9aa;--accent:#03a9f4;--accent2:#0288d1;--ok:#4caf50;--warn:#ffb300;--bad:#e53935}
+*{box-sizing:border-box}
+body{margin:0;font-family:"Segoe UI",system-ui,sans-serif;background:var(--bg);color:var(--text)}
+header{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:.5em;padding:.8em 1em;background:linear-gradient(90deg,#03a9f4,#0d47a1);box-shadow:0 0 20px #0d47a1}
+header h1{margin:0;font-size:1.3em}
+#conn{display:flex;align-items:center;gap:.5em;font-size:.9em}
+.dot{width:.8em;height:.8em;border-radius:50%;background:var(--bad);display:inline-block}
+.dot.on{background:var(--ok)}
+nav{display:flex;gap:.25em;padding:.5em 1em 0;border-bottom:1px solid var(--line);overflow-x:auto}
+nav button{background:none;border:none;border-bottom:3px solid transparent;border-radius:0;color:var(--dim);padding:.6em 1em;font-size:1em;cursor:pointer;white-space:nowrap}
+nav button[aria-selected=true]{color:var(--text);border-bottom-color:var(--accent)}
+main{padding:1em;max-width:1200px;margin:0 auto}
+section[hidden]{display:none}
+button,select,input[type=number],input[type=text]{background:var(--accent);border:none;border-radius:6px;color:#fff;padding:6px 10px;font:inherit;font-weight:600;cursor:pointer}
+button:hover:not(:disabled){background:var(--accent2)}
+button:disabled{opacity:.5;cursor:not-allowed}
+button.secondary{background:#37474f}
+button.danger{background:#d32f2f}
+select,input[type=number],input[type=text]{width:100%;margin-top:.2em;background:#2b2b2b;border:1px solid #444;font-weight:400;cursor:text}
+select{cursor:pointer}
+input[type=range]{width:100%}
+label{font-size:.85em;color:var(--dim)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:1em}
+.card{border:1px solid var(--line);border-radius:12px;padding:1em;background:var(--card);box-shadow:0 0 10px #03a9f433}
+.card h3,.card h2{margin:0 0 .5em;color:var(--accent);font-size:1.05em}
+.panel{background:var(--panel);border:1px solid #444;border-radius:8px;padding:1em;margin-bottom:1em}
+.panel h2{margin-top:0;font-size:1.1em}
+.row{display:flex;flex-wrap:wrap;gap:.5em;align-items:center;margin:.4em 0}
+.row>*{flex:0 0 auto}
+.row input[type=text]{flex:1 1 12em;width:auto}
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:.8em;margin-bottom:1em}
+.tile{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:.7em}
+.tile b{display:block;font-size:1.4em}
+.tile span{font-size:.8em;color:var(--dim)}
+.kv{display:grid;grid-template-columns:max-content 1fr;gap:.2em 1em;font-size:.92em}
+.kv dt{color:var(--dim)}
+.kv dd{margin:0;word-break:break-word}
+.chips{display:flex;flex-wrap:wrap;gap:.4em}
+.chip{padding:.15em .6em;border-radius:1em;font-size:.8em;border:1px solid #444;color:var(--dim)}
+.chip.on{border-color:var(--ok);color:var(--ok)}
+.badge{font-size:.7em;padding:.1em .5em;border-radius:.6em;margin-left:.3em;background:#444;color:#ddd;font-weight:400}
+.badge.warn{background:#5d4a00;color:var(--warn)}
+.pin .state{margin:.4em 0}
+.pin .lvl{font-weight:700}
+.pin .lvl.hi{color:var(--ok)}
+.pin .bounce{font-size:.85em;color:#ccc}
+canvas{width:100%;display:block;background:var(--card);border:1px solid #444;border-radius:8px}
+#log,#uartOut{background:#000;color:#0f0;font-family:monospace;padding:.8em;max-height:260px;min-height:5em;overflow-y:auto;white-space:pre-wrap;border:1px solid #222;border-radius:6px}
+#uartOut{color:#8f8}
+.bench{display:flex;flex-direction:column}
+.bench .meta{font-size:.85em;color:var(--dim);margin-bottom:.6em}
+.bench .params{display:grid;grid-template-columns:1fr 1fr;gap:.4em .8em;margin-bottom:.6em}
+.bench .params .wide{grid-column:1/-1}
+.bench .warn{font-size:.8em;color:var(--warn);margin:.2em 0}
+.bench table{width:100%;border-collapse:collapse;font-size:.88em;margin-top:.6em}
+.bench td{padding:.2em .3em;border-top:1px solid #2c2c2c;vertical-align:top}
+.bench td.v{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.bench td.d{text-align:right;font-size:.8em;white-space:nowrap}
+.bench .notes{font-size:.8em;color:var(--dim);margin:.4em 0 0;padding-left:1.1em}
+.st{font-size:.75em;padding:.1em .6em;border-radius:.8em;font-weight:700}
+.st.ok{background:#1b5e20}.st.skip{background:#5d4a00}.st.fail{background:#7f0000}.st.run{background:#0d47a1}
+.up{color:var(--ok)}.down{color:var(--bad)}
+progress{width:100%;height:.8em;accent-color:var(--accent)}
+.sp{flex:1}
+</style>
 </head>
 <body>
-  <header>ESP32 Web Debugger</header>
-  <div id="vin">VIN: -- V</div>
-  <div id="oscilloContainer">
-    <canvas id="oscilloGraph"></canvas>
-    <div id="oscilloScale">
-      3.3V<br>2.5V<br>1.6V<br>0.8V<br>0.0V
+<header>
+  <h1 id="title">ESP32 Web Debugger</h1>
+  <div id="conn"><span class="dot" id="dot"></span><span id="connText">connecting...</span></div>
+</header>
+<nav role="tablist" id="tabs">
+  <button role="tab" data-tab="overview" aria-selected="true">Overview</button>
+  <button role="tab" data-tab="gpio" aria-selected="false">GPIO</button>
+  <button role="tab" data-tab="scope" aria-selected="false">Oscilloscope</button>
+  <button role="tab" data-tab="buses" aria-selected="false">UART &amp; I2C</button>
+  <button role="tab" data-tab="bench" aria-selected="false">Benchmarks</button>
+  <button role="tab" data-tab="log" aria-selected="false">Log</button>
+</nav>
+<main>
+  <section id="tab-overview">
+    <div class="tiles" id="tiles"></div>
+    <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(280px,1fr))">
+      <div class="panel"><h2>Chip</h2><dl class="kv" id="chipInfo"></dl></div>
+      <div class="panel"><h2>Wi-Fi</h2><dl class="kv" id="wifiInfo"></dl></div>
     </div>
-  </div>
+    <div class="panel"><h2>Peripherals on this chip</h2><div class="chips" id="featChips"></div></div>
+    <div class="panel"><h2>Security blocks</h2><div class="chips" id="cryptoChips"></div></div>
+  </section>
 
-  <div class="section">
-    <h3>Oscilloscope Settings</h3>
-    <label for="oscPin">Select Analog Pin:</label>
-    <select id="oscPin">
-      <option value="34">GPIO34</option>
-      <option value="35">GPIO35</option>
-      <option value="36">GPIO36</option>
-      <option value="39">GPIO39</option>
-    </select>
-  </div>
+  <section id="tab-gpio" hidden>
+    <p class="bench"><span class="meta">Pins used by flash, PSRAM, the console, USB and the UART/I2C buses are hidden for safety.</span></p>
+    <div class="grid" id="pinGrid"></div>
+  </section>
 
-  <div class="grid" id="pinGrid"></div>
+  <section id="tab-scope" hidden>
+    <div class="panel">
+      <div class="row">
+        <label for="scopePin">ADC pin</label>
+        <select id="scopePin" style="width:auto"></select>
+        <button id="scopePause" class="secondary">Pause</button>
+        <span class="sp"></span>
+        <b id="scopeNow">-- V</b>
+      </div>
+      <canvas id="scope" height="260"></canvas>
+      <div class="row"><span id="scopeStats" class="meta"></span></div>
+    </div>
+  </section>
 
-  <div class="section">
-    <h3>UART Terminal</h3>
-    <input type="text" id="uartInput" placeholder="Send UART text">
-    <button onclick="sendUART()">Send</button>
-    <button onclick="readUART()">Read</button>
-  </div>
+  <section id="tab-buses" hidden>
+    <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr))">
+      <div class="panel">
+        <h2>UART terminal <span class="badge" id="uartPins"></span></h2>
+        <div class="row"><input type="text" id="uartInput" placeholder="Text to send" aria-label="UART text"><button id="uartSend">Send</button></div>
+        <div class="row"><label for="uartBaud">Baud</label><input type="number" id="uartBaud" value="115200" min="300" max="5000000" style="width:8em"><button id="uartBaudSet" class="secondary">Set</button></div>
+        <div id="uartOut" aria-live="polite"></div>
+      </div>
+      <div class="panel">
+        <h2>I2C scanner <span class="badge" id="i2cPins"></span></h2>
+        <button id="i2cScan">Scan bus</button>
+        <p id="i2cResults">--</p>
+      </div>
+    </div>
+  </section>
 
-  <div class="section">
-    <h3>I2C Scanner</h3>
-    <button onclick="scanI2C()">Scan I2C Bus</button>
-    <p id="i2cResults">--</p>
-  </div>
+  <section id="tab-bench" hidden>
+    <div class="panel">
+      <div class="row">
+        <button id="runAll">Run all benchmarks</button>
+        <button id="saveBase" class="secondary" title="Remember current numbers and show the change on the next run">Set baseline</button>
+        <button id="expJson" class="secondary">Export JSON</button>
+        <button id="expCsv" class="secondary">Export CSV</button>
+        <span class="sp"></span>
+        <span id="benchState" class="meta"></span>
+      </div>
+      <progress id="benchProg" value="0" max="1" hidden></progress>
+      <p class="meta" style="margin-bottom:0">Benchmarks pause the live views and keep the CPU busy; the page may stall briefly (Wi-Fi scan especially). Tests that drive a pin only run on the pin you pick.</p>
+    </div>
+    <div class="grid" id="benchGrid" style="grid-template-columns:repeat(auto-fill,minmax(320px,1fr))"></div>
+  </section>
 
-  <button id="clearLog">Clear Log</button>
-  <div id="log">Connecting to ESP32...</div>
+  <section id="tab-log" hidden>
+    <div class="row"><button id="clearLog" class="danger">Clear log</button></div>
+    <div id="log" aria-live="polite">Connecting to ESP32...</div>
+  </section>
+</main>
 
-  <script>
-    const pinGrid = document.getElementById("pinGrid");
-    const logBox = document.getElementById("log");
-    const clearBtn = document.getElementById("clearLog");
-    const vinLabel = document.getElementById("vin");
-    const oscilloCanvas = document.getElementById("oscilloGraph");
-    const ctx = oscilloCanvas.getContext("2d");
-    const oscPinSelect = document.getElementById("oscPin");
-    const i2cResultsBox = document.getElementById("i2cResults");
+<script>
+(function () {
+'use strict';
+const $ = (s, r) => (r || document).querySelector(s);
+function el(tag, props, kids) {
+  const e = document.createElement(tag);
+  if (props) Object.keys(props).forEach(k => {
+    if (k === 'text') e.textContent = props[k];
+    else if (k === 'class') e.className = props[k];
+    else if (k.startsWith('on')) e[k] = props[k];
+    else e.setAttribute(k, props[k]);
+  });
+  (kids || []).forEach(c => e.appendChild(typeof c === 'string' ? document.createTextNode(c) : c));
+  return e;
+}
+function store(k, v) { try { if (v === undefined) return JSON.parse(localStorage.getItem(k)); localStorage.setItem(k, JSON.stringify(v)); } catch (e) { return null; } }
 
-    oscilloCanvas.width = oscilloCanvas.clientWidth;
-    oscilloCanvas.height = oscilloCanvas.clientHeight;
-    let oscilloData = [];
-    let pinStates = {};
+let info = null, ws = null, wsDelay = 500;
+const pinCards = {};
+const benchResults = {};
+let baseline = store('wd_baseline') || {};
 
-    let socket;
+/* ---------------------------------------------------------------- log */
+const logBox = $('#log');
+function log(msg) {
+  logBox.textContent += msg + '\n';
+  if (logBox.textContent.length > 20000) logBox.textContent = logBox.textContent.slice(-12000);
+  logBox.scrollTop = logBox.scrollHeight;
+}
+$('#clearLog').onclick = () => { logBox.textContent = ''; };
 
-    function log(msg) {
-      logBox.textContent += msg + "\n";
-      logBox.scrollTop = logBox.scrollHeight;
-    }
+/* --------------------------------------------------------------- tabs */
+function showTab(name) {
+  document.querySelectorAll('#tabs button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === name)));
+  document.querySelectorAll('main > section').forEach(s => { s.hidden = s.id !== 'tab-' + name; });
+  if (name === 'scope') drawScope();
+  store('wd_tab', name);
+}
+document.querySelectorAll('#tabs button').forEach(b => { b.onclick = () => showTab(b.dataset.tab); });
 
-    clearBtn.onclick = () => logBox.textContent = "";
+/* ---------------------------------------------------------- websocket */
+function send(msg) {
+  if (ws && ws.readyState === 1) ws.send(typeof msg === 'string' ? msg : JSON.stringify(msg));
+}
+function connect() {
+  ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws');
+  ws.onopen = () => { wsDelay = 500; setConn(true); log('WebSocket connected'); };
+  ws.onmessage = e => handle(e.data);
+  ws.onclose = () => {
+    setConn(false);
+    log('WebSocket closed, reconnecting...');
+    setTimeout(connect, wsDelay);
+    wsDelay = Math.min(wsDelay * 2, 5000);
+  };
+}
+function setConn(on) {
+  $('#dot').className = 'dot' + (on ? ' on' : '');
+  $('#connText').textContent = on ? 'connected' : 'disconnected';
+}
 
-    oscPinSelect.onchange = () => {
-      const pin = oscPinSelect.value;
-      socket.send(`OSCILLO:${pin}`);
-      log(`📡 Oscilloscope pin set to ${pin}`);
-    };
+function handle(data) {
+  let m;
+  try { m = JSON.parse(data); } catch (e) { log('Malformed message: ' + data); return; }
+  if (m.pins) updatePins(m.pins);
+  if (m.scope) onScope(m.scope);
+  if (m.scope_sel !== undefined) $('#scopePin').value = String(m.scope_sel);
+  if (m.sys) onSys(m.sys);
+  if (m.wifi) onWifi(m.wifi);
+  if (m.uart !== undefined) uartOut(m.uart);
+  if (m.i2c) onI2c(m.i2c);
+  if (m.bench) onBench(m.bench);
+  if (m.error) log('Device: ' + m.error);
+}
 
-    function createOrUpdatePinCard(pinData) {
-      const { pin, mode, state, bounce } = pinData;
-      let card = document.getElementById(`pin-${pin}`);
+/* --------------------------------------------------------------- info */
+function kv(dl, rows) {
+  dl.textContent = '';
+  rows.forEach(r => { if (r[1] !== undefined && r[1] !== null && r[1] !== '') { dl.appendChild(el('dt', { text: r[0] })); dl.appendChild(el('dd', { text: String(r[1]) })); } });
+}
+const kb = n => (n / 1024).toFixed(0) + ' KB';
+const mb = n => (n / 1048576).toFixed(n >= 1048576 * 4 ? 0 : 1) + ' MB';
 
-      if (!card) {
-        card = document.createElement("div");
-        card.className = "pin";
-        card.id = `pin-${pin}`;
-        card.innerHTML = `
-          <div class="title">GPIO${pin}</div>
-          <div class="mode">
-            <select id="mode-${pin}">
-              <option value="INPUT">INPUT</option>
-              <option value="OUTPUT">OUTPUT</option>
-              <option value="PWM">PWM</option>
-            </select>
-          </div>
-          <div class="state" id="state-${pin}">State: <strong>--</strong></div>
-          <div class="bounce" id="bounce-${pin}">Bounce Count: 0</div>
-          <div id="controls-${pin}" class="controls"></div>
-        `;
-        pinGrid.appendChild(card);
+function renderInfo() {
+  const c = info.chip, f = info.firmware, mem = info.memory;
+  $('#title').textContent = c.name + ' Web Debugger';
+  document.title = c.name + ' Web Debugger';
+  kv($('#chipInfo'), [
+    ['Model', c.name + ' ' + c.revision], ['Cores', c.cores], ['CPU clock', c.cpu_mhz + ' MHz'], ['MAC', c.mac],
+    ['Internal RAM', kb(mem.internal_total)], ['PSRAM', mem.psram_total ? mb(mem.psram_total) : 'none'],
+    ['Flash', mem.flash_physical ? mb(mem.flash_physical) + ' (id 0x' + mem.flash_id.toString(16).toUpperCase() + ')' : ''],
+    ['Firmware', f.version + ' (' + f.optimization + ')'], ['ESP-IDF', f.idf], ['Built', f.built]
+  ]);
+  const chips = (box, obj) => {
+    box.textContent = '';
+    Object.keys(obj).forEach(k => {
+      const v = obj[k];
+      box.appendChild(el('span', { class: 'chip' + (v && v !== 'none' ? ' on' : ''), text: k.replace(/_/g, ' ') + (typeof v === 'string' ? ': ' + v : '') }));
+    });
+  };
+  chips($('#featChips'), info.features);
+  chips($('#cryptoChips'), info.crypto);
+  onWifi(info.wifi);
+  $('#uartPins').textContent = 'TX ' + info.defaults.uart_tx + ' / RX ' + info.defaults.uart_rx;
+  $('#i2cPins').textContent = 'SDA ' + info.defaults.i2c_sda + ' / SCL ' + info.defaults.i2c_scl;
 
-        document.getElementById(`mode-${pin}`).addEventListener("change", (e) => {
-          const newMode = e.target.value;
-          socket.send(`MODE:${pin},${newMode}`);
-          renderControls(pin, newMode);
-        });
+  const sel = $('#scopePin');
+  sel.textContent = '';
+  info.scope.pins.forEach(p => sel.appendChild(el('option', { value: p, text: 'GPIO' + p })));
+  sel.value = String(info.scope.selected);
+  if (!info.scope.pins.length) sel.appendChild(el('option', { text: 'no ADC pins' }));
+  buildBench();
+}
+
+function tile(id, label) {
+  let t = document.getElementById('tile-' + id);
+  if (!t) { t = el('div', { class: 'tile', id: 'tile-' + id }, [el('b', { text: '--' }), el('span', { text: label })]); $('#tiles').appendChild(t); }
+  return t.firstChild;
+}
+function onSys(s) {
+  const up = s.uptime, h = Math.floor(up / 3600), mi = Math.floor(up / 60) % 60;
+  tile('temp', 'CPU temperature').textContent = s.temp !== undefined ? s.temp.toFixed(1) + ' °C' : 'n/a';
+  tile('heap', 'Free heap').textContent = kb(s.heap_free);
+  tile('heapmin', 'Heap low-water mark').textContent = kb(s.heap_min);
+  if (s.psram_free !== undefined) tile('psram', 'Free PSRAM').textContent = kb(s.psram_free);
+  tile('cpu', 'CPU clock').textContent = s.cpu_mhz + ' MHz';
+  tile('up', 'Uptime').textContent = h + 'h ' + mi + 'm ' + (up % 60) + 's';
+}
+function onWifi(w) {
+  if (!w || !w.ap) return;
+  const s = w.sta || {};
+  kv($('#wifiInfo'), [
+    ['Mode', w.mode], ['Access point', w.ap.ssid], ['AP address', w.ap.ip], ['AP stations', w.ap.stations],
+    ['Station', s.configured ? (s.connected ? 'connected to ' + s.ssid : 'not connected') : 'not configured (AP only)'],
+    ['Station address', s.ip], ['RSSI', s.rssi !== undefined ? s.rssi + ' dBm' : ''], ['Channel', s.channel]
+  ]);
+  if (s.rssi !== undefined) tile('rssi', 'Wi-Fi RSSI').textContent = s.rssi + ' dBm';
+}
+
+/* --------------------------------------------------------------- GPIO */
+function updatePins(pins) {
+  const seen = {};
+  pins.forEach(p => { seen[p.pin] = true; pinCard(p); });
+  Object.keys(pinCards).forEach(k => { if (!seen[k]) { pinCards[k].root.remove(); delete pinCards[k]; } });
+  fillBenchPins(pins);
+}
+function pinCard(p) {
+  let c = pinCards[p.pin];
+  if (!c) {
+    const sel = el('select', { 'aria-label': 'GPIO' + p.pin + ' mode' });
+    (p.input_only ? ['INPUT'] : ['INPUT', 'OUTPUT', 'PWM']).forEach(m => sel.appendChild(el('option', { value: m, text: m })));
+    const title = el('h3', { text: 'GPIO' + p.pin });
+    if (p.input_only) title.appendChild(el('span', { class: 'badge', text: 'input only' }));
+    if (p.strapping) title.appendChild(el('span', { class: 'badge warn', text: 'strapping', title: 'Boot-mode pin: avoid driving it while resetting' }));
+    const lvl = el('span', { class: 'lvl', text: '--' });
+    const bounce = el('div', { class: 'bounce' });
+    const ctl = el('div', { class: 'controls' });
+    const root = el('div', { class: 'card pin' }, [title, sel, el('div', { class: 'state' }, ['State: ', lvl]), bounce, ctl]);
+    $('#pinGrid').appendChild(root);
+    c = pinCards[p.pin] = { root, sel, lvl, bounce, ctl, mode: null, pin: p.pin };
+    sel.onchange = () => send('MODE:' + p.pin + ',' + sel.value);
+  }
+  c.lvl.textContent = p.state ? 'HIGH' : 'LOW';
+  c.lvl.className = 'lvl' + (p.state ? ' hi' : '');
+  c.bounce.textContent = 'Edges: ' + p.bounce;
+  if (c.sel.value !== p.mode) c.sel.value = p.mode;
+  if (c.mode !== p.mode) { c.mode = p.mode; buildControls(c, p); }
+  else if (p.mode === 'PWM') syncPwm(c, p);
+}
+function buildControls(c, p) {
+  c.ctl.textContent = '';
+  c.pwm = null;
+  if (p.mode === 'OUTPUT') {
+    c.ctl.appendChild(el('div', { class: 'row' }, [
+      el('button', { text: 'HIGH', onclick: () => send('WRITE:' + p.pin + ',1') }),
+      el('button', { text: 'LOW', class: 'secondary', onclick: () => send('WRITE:' + p.pin + ',0') })
+    ]));
+  } else if (p.mode === 'PWM') {
+    const freq = el('input', { type: 'number', min: 1, max: 40000, 'aria-label': 'PWM frequency in Hz' });
+    const duty = el('input', { type: 'range', min: 0, max: 100, 'aria-label': 'PWM duty cycle in percent' });
+    const dl = el('label', { text: 'Duty' });
+    const apply = () => { const f = parseInt(freq.value, 10); if (f > 0) send('PWM:' + p.pin + ',' + f + ',' + duty.value); };
+    freq.onchange = apply;
+    duty.oninput = () => { dl.textContent = 'Duty ' + duty.value + '%'; };
+    duty.onchange = apply;
+    c.ctl.appendChild(el('label', { text: 'Frequency (Hz)' }));
+    c.ctl.appendChild(freq);
+    c.ctl.appendChild(dl);
+    c.ctl.appendChild(duty);
+    c.pwm = { freq, duty, dl };
+    syncPwm(c, p, true);
+  }
+}
+function syncPwm(c, p, force) {
+  if (!c.pwm) return;
+  if (force || document.activeElement !== c.pwm.freq) c.pwm.freq.value = p.freq;
+  if (force || document.activeElement !== c.pwm.duty) { c.pwm.duty.value = p.duty; c.pwm.dl.textContent = 'Duty ' + p.duty + '%'; }
+}
+
+/* ------------------------------------------------------- oscilloscope */
+const scopeData = [];
+let scopePaused = false;
+const scopeCv = $('#scope');
+$('#scopePin').onchange = e => { scopeData.length = 0; send('OSCILLO:' + e.target.value); };
+$('#scopePause').onclick = e => { scopePaused = !scopePaused; e.target.textContent = scopePaused ? 'Resume' : 'Pause'; };
+function onScope(s) {
+  if (scopePaused) return;
+  s.mv.forEach(v => scopeData.push(v));
+  while (scopeData.length > 300) scopeData.shift();
+  const last = scopeData[scopeData.length - 1];
+  $('#scopeNow').textContent = (last / 1000).toFixed(3) + ' V' + (s.cal ? '' : ' (uncalibrated)');
+  const mn = Math.min.apply(null, scopeData), mx = Math.max.apply(null, scopeData);
+  const avg = scopeData.reduce((a, b) => a + b, 0) / scopeData.length;
+  $('#scopeStats').textContent = 'min ' + (mn / 1000).toFixed(3) + ' V   max ' + (mx / 1000).toFixed(3) + ' V   avg ' + (avg / 1000).toFixed(3) + ' V   (' + s.dt + ' ms/sample)';
+  if (!$('#tab-scope').hidden) drawScope();
+}
+function drawScope() {
+  const dpr = window.devicePixelRatio || 1, w = scopeCv.clientWidth, h = 260;
+  if (!w) return;
+  scopeCv.width = w * dpr; scopeCv.height = h * dpr;
+  const g = scopeCv.getContext('2d');
+  g.scale(dpr, dpr);
+  const top = 10, bot = h - 20, left = 44, right = w - 8, vmax = 3300;
+  const y = v => bot - (v / vmax) * (bot - top);
+  g.font = '11px monospace'; g.fillStyle = '#9aa'; g.strokeStyle = '#2c2c2c'; g.lineWidth = 1;
+  for (let v = 0; v <= vmax; v += 500) {
+    g.beginPath(); g.moveTo(left, y(v)); g.lineTo(right, y(v)); g.stroke();
+    g.fillText((v / 1000).toFixed(1) + ' V', 4, y(v) + 4);
+  }
+  if (scopeData.length < 2) return;
+  g.strokeStyle = '#03a9f4'; g.lineWidth = 2; g.beginPath();
+  scopeData.forEach((v, i) => {
+    const x = left + (i / 299) * (right - left);
+    if (i === 0) g.moveTo(x, y(v)); else g.lineTo(x, y(v));
+  });
+  g.stroke();
+}
+window.addEventListener('resize', drawScope);
+
+/* -------------------------------------------------------- UART / I2C */
+function uartOut(t) { const o = $('#uartOut'); o.textContent += t; o.scrollTop = o.scrollHeight; }
+$('#uartSend').onclick = () => { const v = $('#uartInput').value; if (v) { send('UART_SEND:' + v); uartOut('> ' + v + '\n'); } };
+$('#uartInput').onkeydown = e => { if (e.key === 'Enter') $('#uartSend').click(); };
+$('#uartBaudSet').onclick = () => send('UART_BAUD:' + parseInt($('#uartBaud').value, 10));
+$('#i2cScan').onclick = () => { $('#i2cResults').textContent = 'Scanning...'; send('I2C_SCAN'); };
+function onI2c(list) {
+  $('#i2cResults').textContent = list.length ? 'Addresses: ' + list.map(a => '0x' + a.toString(16).toUpperCase().padStart(2, '0')).join(', ') : 'No devices found.';
+  log('I2C devices: ' + JSON.stringify(list));
+}
+
+/* --------------------------------------------------------- benchmarks */
+const benchUi = {};
+const PARAM_DEFS = {
+  flash: [{ k: 'size_kb', label: 'Erase/write size (KB)', type: 'number', def: 64 }],
+  thermal: [{ k: 'seconds', label: 'Load duration (s)', type: 'number', def: 8 }],
+  led: [
+    { k: 'led_gpio', label: 'LED GPIO (-1 none)', type: 'number', from: 'led_gpio' },
+    { k: 'rgb_gpio', label: 'WS2812 GPIO (-1 none)', type: 'number', from: 'rgb_gpio' },
+    { k: 'pixels', label: 'WS2812 pixels', type: 'number', def: 1 }
+  ],
+  wifi: [
+    { k: 'host', label: 'TCP test host (optional)', type: 'text', wide: true, ph: 'IP running: nc -lk 5001 >/dev/null' },
+    { k: 'port', label: 'Port', type: 'number', def: 5001 },
+    { k: 'kb', label: 'Upload size (KB)', type: 'number', def: 2048 }
+  ]
+};
+function buildBench() {
+  const grid = $('#benchGrid');
+  grid.textContent = '';
+  info.benchmarks.forEach(b => {
+    const status = el('span', { class: 'st', text: '' });
+    const run = el('button', { text: 'Run', onclick: () => runBench(b.id) });
+    const out = el('div');
+    const head = el('div', { class: 'row' }, [el('h3', { text: b.name, style: 'margin:0' }), el('span', { class: 'badge', text: b.group }), status, el('span', { class: 'sp' }), run]);
+    const card = el('div', { class: 'card bench' }, [head, el('div', { class: 'meta', text: b.desc })]);
+    const inputs = {};
+    const defs = PARAM_DEFS[b.id] || [];
+    const saved = store('wd_params_' + b.id) || {};
+    if (b.id === 'gpio' || defs.length) {
+      const box = el('div', { class: 'params' });
+      if (b.id === 'gpio') {
+        const sel = el('select', { 'aria-label': 'GPIO to test' }, [el('option', { value: '-1', text: '- choose a free pin -' })]);
+        inputs.pin = sel;
+        const sw = el('input', { type: 'checkbox', id: 'sweep' });
+        inputs.sweep = sw;
+        box.appendChild(el('div', { class: 'wide' }, [el('label', { text: 'Pin to drive (nothing attached!)' }), sel]));
+        box.appendChild(el('label', { class: 'wide' }, [sw, ' Also sweep every pin (toggles all GPIOs briefly)']));
+        card.appendChild(el('div', { class: 'warn', text: 'This test drives the selected pin. Do not choose a pin wired to anything.' }));
       }
-
-      pinStates[pin] = { mode, state, bounce };
-
-      const modeSelect = document.getElementById(`mode-${pin}`);
-      if (modeSelect.value !== mode) modeSelect.value = mode;
-
-      document.getElementById(`state-${pin}`).innerHTML = `State: <strong>${state ? "HIGH" : "LOW"}</strong>`;
-      document.getElementById(`bounce-${pin}`).textContent = `Bounce Count: ${bounce}`;
-
-      renderControls(pin, mode, state);
-    }
-
-    function renderControls(pin, mode, state = 0) {
-      const container = document.getElementById(`controls-${pin}`);
-      container.innerHTML = "";
-
-      if (mode === "OUTPUT") {
-        const highBtn = document.createElement("button");
-        highBtn.textContent = "HIGH";
-        highBtn.onclick = () => socket.send(`WRITE:${pin},1`);
-
-        const lowBtn = document.createElement("button");
-        lowBtn.textContent = "LOW";
-        lowBtn.onclick = () => socket.send(`WRITE:${pin},0`);
-
-        container.appendChild(highBtn);
-        container.appendChild(lowBtn);
-      } else if (mode === "PWM") {
-        const pwmInput = document.createElement("input");
-        pwmInput.type = "number";
-        pwmInput.min = "1";
-        pwmInput.max = "10000";
-        pwmInput.placeholder = "PWM Hz";
-        pwmInput.style.marginTop = "0.5em";
-        pwmInput.onchange = () => {
-          const val = parseInt(pwmInput.value);
-          if (!isNaN(val)) socket.send(`PWM:${pin},${val}`);
-        };
-        container.appendChild(pwmInput);
-      }
-    }
-
-    function updatePins(pins) {
-      const seen = new Set();
-      pins.forEach(pinData => {
-        seen.add(pinData.pin);
-        createOrUpdatePinCard(pinData);
+      defs.forEach(d => {
+        const v = saved[d.k] !== undefined ? saved[d.k] : (d.from ? info.defaults[d.from] : d.def);
+        const inp = el('input', { type: d.type, 'aria-label': d.label, placeholder: d.ph || '' });
+        inp.value = v === undefined ? '' : v;
+        inputs[d.k] = inp;
+        box.appendChild(el('div', d.wide ? { class: 'wide' } : null, [el('label', { text: d.label }), inp]));
       });
-
-      Object.keys(pinStates).forEach(pinId => {
-        if (!seen.has(Number(pinId))) {
-          const el = document.getElementById(`pin-${pinId}`);
-          if (el) el.remove();
-          delete pinStates[pinId];
+      card.appendChild(box);
+    }
+    if (!b.available) {
+      run.disabled = true;
+      card.appendChild(el('div', { class: 'warn', text: b.reason || 'Not available on this chip.' }));
+      status.className = 'st skip'; status.textContent = 'n/a';
+    }
+    card.appendChild(out);
+    grid.appendChild(card);
+    benchUi[b.id] = { card, out, status, run, inputs, def: b };
+  });
+  fetch('/api/bench').then(r => r.json()).then(res => Object.keys(res).forEach(id => showResult(res[id], true))).catch(() => {});
+}
+function fillBenchPins(pins) {
+  const u = benchUi.gpio;
+  if (!u) return;
+  const sel = u.inputs.pin, cur = sel.value;
+  if (sel.options.length === pins.filter(p => !p.input_only).length + 1) return;
+  while (sel.options.length > 1) sel.remove(1);
+  pins.filter(p => !p.input_only).forEach(p => sel.appendChild(el('option', { value: p.pin, text: 'GPIO' + p.pin + (p.strapping ? ' (strapping)' : '') })));
+  sel.value = cur;
+}
+function collect(id) {
+  const u = benchUi[id], params = {}, save = {};
+  Object.keys(u.inputs).forEach(k => {
+    const i = u.inputs[k];
+    if (i.type === 'checkbox') { params[k] = i.checked ? '1' : '0'; return; }
+    if (i.value === '') return;
+    params[k] = i.type === 'number' || k === 'pin' ? Number(i.value) : i.value;
+    save[k] = i.value;
+  });
+  store('wd_params_' + id, save);
+  return params;
+}
+function runBench(id) {
+  send({ cmd: 'bench', id: id, params: id === 'all' ? {} : collect(id) });
+}
+$('#runAll').onclick = () => {
+  const params = {};
+  Object.keys(benchUi).forEach(id => Object.assign(params, collect(id)));
+  send({ cmd: 'bench', id: 'all', params: params });
+};
+function setBusy(b) {
+  Object.keys(benchUi).forEach(id => { benchUi[id].run.disabled = b || !benchUi[id].def.available; });
+  $('#runAll').disabled = b;
+}
+function onBench(b) {
+  if (b.event === 'state') { setBusy(b.running); $('#benchState').textContent = b.running ? 'benchmark running...' : ''; }
+  else if (b.event === 'start') {
+    setBusy(true);
+    const u = benchUi[b.id];
+    if (u) { u.status.className = 'st run'; u.status.textContent = 'running'; u.out.textContent = ''; }
+    $('#benchState').textContent = 'running ' + (u ? u.def.name : b.id) + (b.total > 1 ? ' (' + b.index + '/' + b.total + ')' : '') + '...';
+    if (b.total > 1) { const p = $('#benchProg'); p.hidden = false; p.max = b.total; p.value = b.index - 1; }
+  } else if (b.event === 'done') {
+    showResult(b.result);
+    if ($('#benchProg').max > 1) $('#benchProg').value = Number($('#benchProg').value) + 1;
+  } else if (b.event === 'finished') {
+    setBusy(false);
+    $('#benchState').textContent = 'finished';
+    $('#benchProg').hidden = true;
+    $('#benchProg').max = 1;
+    log('Benchmarks finished');
+  }
+}
+function fmt(v) {
+  const a = Math.abs(v);
+  return a >= 1000 ? v.toFixed(0) : a >= 100 ? v.toFixed(1) : a >= 10 ? v.toFixed(2) : v.toFixed(3);
+}
+function showResult(r, quiet) {
+  benchResults[r.id] = r;
+  const u = benchUi[r.id];
+  if (!u) return;
+  u.status.className = 'st ' + r.status;
+  u.status.textContent = r.status + (r.duration_ms !== undefined ? ' · ' + (r.duration_ms / 1000).toFixed(1) + ' s' : '');
+  u.out.textContent = '';
+  const base = baseline[r.id] || {};
+  if (r.metrics.length) {
+    const t = el('table');
+    r.metrics.forEach(m => {
+      const row = el('tr', null, [el('td', { text: m.n })]);
+      if (m.s !== undefined) row.appendChild(el('td', { class: 'v', text: m.s, colspan: 2 }));
+      else {
+        row.appendChild(el('td', { class: 'v', text: fmt(m.v) + (m.u ? ' ' + m.u : '') }));
+        const d = el('td', { class: 'd' });
+        if (base[m.n] !== undefined && base[m.n] !== 0) {
+          const pct = (m.v - base[m.n]) / Math.abs(base[m.n]) * 100;
+          if (Math.abs(pct) >= 0.5) { d.textContent = (pct > 0 ? '+' : '') + pct.toFixed(1) + '%'; d.className = 'd ' + (pct > 0 ? 'up' : 'down'); }
         }
-      });
-    }
-
-    function sendUART() {
-      const text = document.getElementById("uartInput").value;
-      if (text.trim()) socket.send(`UART_SEND:${text}`);
-    }
-
-    function readUART() {
-      socket.send("UART_READ");
-    }
-
-    function scanI2C() {
-      socket.send("I2C_SCAN");
-    }
-
-    function drawOscillo(data) {
-      ctx.clearRect(0, 0, oscilloCanvas.width, oscilloCanvas.height);
-      ctx.beginPath();
-      ctx.strokeStyle = "#03a9f4";
-      ctx.lineWidth = 2;
-
-      data.forEach((v, i) => {
-        const x = (i / data.length) * oscilloCanvas.width;
-        const y = oscilloCanvas.height - (v / 3.3) * oscilloCanvas.height;
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-      });
-
-      ctx.stroke();
-    }
-
-    function handleMessage(data) {
-      try {
-        const parsed = JSON.parse(data);
-        if (Array.isArray(parsed)) {
-          updatePins(parsed);
-        } else if (parsed.oscilloscope) {
-          const voltage = parsed.oscilloscope.voltage;
-          oscilloData.push(voltage);
-          vinLabel.textContent = `VIN: ${voltage.toFixed(2)} V`;
-          if (oscilloData.length > 100) oscilloData.shift();
-          drawOscillo(oscilloData);
-        } else if (parsed.i2c) {
-          const devices = parsed.i2c;
-          i2cResultsBox.textContent = devices.length
-            ? "Addresses: " + devices.map(addr => "0x" + addr.toString(16)).join(", ")
-            : "No devices found.";
-          log("🔍 I2C devices: " + JSON.stringify(devices));
-        } else {
-          log("ℹ️ " + JSON.stringify(parsed));
-        }
-      } catch {
-        log("⚠️ Malformed: " + data);
+        row.appendChild(d);
       }
-    }
+      t.appendChild(row);
+    });
+    u.out.appendChild(t);
+  }
+  if (r.notes && r.notes.length) {
+    const ul = el('ul', { class: 'notes' });
+    r.notes.forEach(n => ul.appendChild(el('li', { text: n })));
+    u.out.appendChild(ul);
+  }
+  if (!quiet) log('Benchmark ' + r.id + ': ' + r.status);
+}
+$('#saveBase').onclick = () => {
+  baseline = {};
+  Object.keys(benchResults).forEach(id => {
+    baseline[id] = {};
+    benchResults[id].metrics.forEach(m => { if (m.v !== undefined) baseline[id][m.n] = m.v; });
+  });
+  store('wd_baseline', baseline);
+  log('Baseline saved for ' + Object.keys(baseline).length + ' benchmark(s)');
+};
+function download(name, type, text) {
+  const a = el('a', { href: URL.createObjectURL(new Blob([text], { type: type })), download: name });
+  document.body.appendChild(a); a.click(); a.remove();
+}
+function stamp() { return info.chip.target + '-' + new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19); }
+$('#expJson').onclick = () => {
+  download('bench-' + stamp() + '.json', 'application/json', JSON.stringify({ date: new Date().toISOString(), chip: info.chip, firmware: info.firmware, memory: info.memory, results: benchResults }, null, 2));
+};
+$('#expCsv').onclick = () => {
+  const q = s => '"' + String(s).replace(/"/g, '""') + '"';
+  const rows = ['benchmark,metric,value,unit'];
+  Object.keys(benchResults).forEach(id => benchResults[id].metrics.forEach(m => {
+    rows.push([q(id), q(m.n), m.v !== undefined ? m.v : q(m.s), q(m.u || '')].join(','));
+  }));
+  download('bench-' + stamp() + '.csv', 'text/csv', rows.join('\n'));
+};
 
-    function setupWebSocket() {
-      socket = new WebSocket(`ws://${location.hostname}/ws`);
-      socket.onopen = () => log("WebSocket connected");
-      socket.onmessage = e => handleMessage(e.data);
-      socket.onerror = () => log("WebSocket error");
-      socket.onclose = () => {
-        log("WebSocket closed. Reconnecting...");
-        setTimeout(setupWebSocket, 2000);
-      };
-    }
-
-    setupWebSocket();
-  </script>
+/* --------------------------------------------------------------- boot */
+fetch('/api/info').then(r => r.json()).then(i => { info = i; renderInfo(); log('Connected to ' + i.chip.name + ' (' + i.firmware.version + ')'); })
+  .catch(e => log('Could not load /api/info: ' + e));
+showTab(store('wd_tab') || 'overview');
+connect();
+})();
+</script>
+</body>
+</html>

@@ -6,7 +6,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     container:
-      image: espressif/idf:v5.2.1
+      image: espressif/idf:v5.3.1
     strategy:
       fail-fast: false
       matrix:
@@ -16,6 +16,7 @@ jobs:
           - { chip: 'esp32s2', boot_offset: '0x1000', ota_dir: 'ESP32-S2' }
           - { chip: 'esp32s3', boot_offset: '0x0', ota_dir: 'ESP32-S3' }
           - { chip: 'esp32c6', boot_offset: '0x0', ota_dir: 'ESP32-C6' }
+          - { chip: 'esp32c2', boot_offset: '0x0', ota_dir: 'ESP32-C2' }
 
     steps:
       - name: Checkout repository

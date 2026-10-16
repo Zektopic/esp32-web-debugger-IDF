@@ -1,5 +1,0 @@
-{
-    "idf.port": "/dev/ttyUSB0",
-    "idf.flashType": "UART",
-    "idf.pythonInstallPath": "C:\\Espressif4.4\\tools\\idf-python\\3.11.2\\python.exe"
-}
