@@ -51,4 +51,5 @@ sdkconfig.old
 
 # Project specific
 *.bin
+!docs/**/*.bin
 *.cache/
