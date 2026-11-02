@@ -37,6 +37,17 @@ Anything ESP-IDF adds later should work unchanged as long as the SOC capability 
 
 ## Quick start
 
+### ⚡ Option 1: Flash from Your Browser (No Toolchain Required)
+
+👉 **[Open the ESP32 Web Debugger Web Flasher (`zektopic.github.io/esp32-web-debugger-IDF`)](https://zektopic.github.io/esp32-web-debugger-IDF/)**
+
+Using Chrome, Edge, Brave, or Opera over USB (powered by `esptool-js` & Web Serial):
+1. Plug your ESP32 / S2 / S3 / C2 / C3 / C6 board into USB and click **Connect & Detect Chip** (or **Flash Firmware**).
+2. The web flasher automatically identifies your ESP32 variant and writes the bootloader, partition table, application firmware, and SPIFFS web UI.
+3. Open the built-in **Web Serial Monitor** on the same page to view boot logs, or join the **`ESP32-Debugger`** Wi-Fi AP (password `12345678`) and browse to `http://192.168.4.1/`.
+
+### 🛠️ Option 2: Build & Flash with ESP-IDF
+
 ```bash
 # ESP-IDF v5.3.x environment active (. $IDF_PATH/export.sh)
 idf.py set-target esp32s3        # or esp32, esp32s2, esp32c3, esp32c2, esp32c6, esp32h2

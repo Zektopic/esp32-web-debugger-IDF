@@ -1,0 +1,1251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="dark">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='14' fill='%230d47a1'/><path d='M18 20h28v24H18z' fill='%23121212' stroke='%2303a9f4' stroke-width='3'/><path d='M34 22l-8 11h7l-3 9 10-12h-7z' fill='%234caf50'/></svg>">
+<title>ESP32 Web Debugger — Web Flasher &amp; Serial Console</title>
+<style>
+:root {
+  --bg: #0f1115;
+  --panel: #171a21;
+  --card: #1d212a;
+  --card-hover: #232834;
+  --line: #2e3440;
+  --text: #eceff4;
+  --dim: #9aa5b4;
+  --accent: #03a9f4;
+  --accent2: #0288d1;
+  --accent-glow: rgba(3, 169, 244, 0.22);
+  --ok: #4caf50;
+  --ok-bg: rgba(76, 175, 80, 0.14);
+  --warn: #ffb300;
+  --warn-bg: rgba(255, 179, 0, 0.14);
+  --bad: #e53935;
+  --bad-bg: rgba(229, 57, 53, 0.15);
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+}
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+header {
+  background: linear-gradient(90deg, #03a9f4, #0d47a1);
+  box-shadow: 0 4px 24px rgba(13, 71, 161, 0.55);
+  padding: 1rem 1.5rem;
+}
+.header-inner {
+  max-width: 1240px;
+  margin: 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+.brand-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+.brand h1 {
+  margin: 0;
+  font-size: 1.35rem;
+  letter-spacing: -0.01em;
+}
+.brand p {
+  margin: 0.1rem 0 0;
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.85);
+}
+.header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+}
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  background: rgba(0, 0, 0, 0.32);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #fff;
+}
+.pill:hover {
+  background: rgba(0, 0, 0, 0.48);
+  text-decoration: none;
+}
+.dot {
+  width: 0.65rem;
+  height: 0.65rem;
+  border-radius: 50%;
+  background: var(--bad);
+  display: inline-block;
+}
+.dot.on { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+.dot.busy { background: var(--warn); box-shadow: 0 0 8px var(--warn); }
+
+main {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 1.5rem 1rem 3rem;
+}
+
+.alert {
+  padding: 0.85rem 1rem;
+  border-radius: 10px;
+  margin-bottom: 1.25rem;
+  border: 1px solid var(--line);
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  font-size: 0.92rem;
+}
+.alert.warn { background: var(--warn-bg); border-color: rgba(255, 179, 0, 0.45); color: #ffe082; }
+.alert.ok { background: var(--ok-bg); border-color: rgba(76, 175, 80, 0.45); color: #b9f6ca; }
+.alert.bad { background: var(--bad-bg); border-color: rgba(229, 57, 53, 0.45); color: #ffcdd2; }
+.alert[hidden] { display: none !important; }
+
+.step-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+.step-title {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0;
+  font-size: 1.1rem;
+}
+.step-num {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #000;
+  font-weight: 700;
+  font-size: 0.85rem;
+  display: inline-grid;
+  place-items: center;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 1.25rem;
+  margin-bottom: 1.25rem;
+}
+
+.target-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(185px, 1fr));
+  gap: 0.85rem;
+}
+.target-card {
+  background: var(--card);
+  border: 2px solid var(--line);
+  border-radius: 12px;
+  padding: 0.9rem;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, transform 0.1s, box-shadow 0.15s;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.target-card:hover {
+  background: var(--card-hover);
+  border-color: #4c566a;
+}
+.target-card.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 18px var(--accent-glow);
+  background: rgba(3, 169, 244, 0.07);
+}
+.target-card .chip-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+}
+.target-card h3 {
+  margin: 0;
+  font-size: 1.05rem;
+  color: var(--text);
+}
+.target-card.selected h3 {
+  color: var(--accent);
+}
+.target-card .arch {
+  font-size: 0.78rem;
+  color: var(--dim);
+}
+.target-card .specs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.25rem;
+}
+.badge {
+  font-size: 0.7rem;
+  padding: 0.12rem 0.45rem;
+  border-radius: 6px;
+  background: #2b303c;
+  color: #d8dee9;
+  font-weight: 600;
+}
+.badge.accent { background: rgba(3, 169, 244, 0.2); color: #81d4fa; }
+.badge.ok { background: var(--ok-bg); color: #81c784; border: 1px solid rgba(76, 175, 80, 0.4); }
+.badge.warn { background: var(--warn-bg); color: var(--warn); }
+
+.two-col {
+  display: grid;
+  grid-template-columns: 1.15fr 0.85fr;
+  gap: 1.25rem;
+}
+@media (max-width: 900px) {
+  .two-col { grid-template-columns: 1fr; }
+}
+
+.controls-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.85rem;
+  margin-bottom: 1rem;
+}
+label {
+  display: block;
+  font-size: 0.82rem;
+  color: var(--dim);
+  margin-bottom: 0.25rem;
+}
+select, input[type="text"], input[type="number"], input[type="file"] {
+  width: 100%;
+  background: #11141a;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 0.5rem 0.65rem;
+  font: inherit;
+  font-size: 0.9rem;
+}
+select:focus, input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.check-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.2rem;
+  align-items: center;
+  margin: 0.75rem 0 1rem;
+}
+.check-row label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0;
+  color: var(--text);
+  font-size: 0.88rem;
+  cursor: pointer;
+}
+.check-row input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+}
+
+.btn-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: center;
+}
+button, .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  background: var(--accent);
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  padding: 0.6rem 1.05rem;
+  font: inherit;
+  font-size: 0.92rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+  text-decoration: none;
+}
+button:hover:not(:disabled), .btn:hover {
+  background: var(--accent2);
+  text-decoration: none;
+}
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+button.secondary, .btn.secondary {
+  background: #2e3440;
+  color: var(--text);
+}
+button.secondary:hover:not(:disabled), .btn.secondary:hover {
+  background: #3b4252;
+}
+button.success, .btn.success {
+  background: #2e7d32;
+}
+button.success:hover:not(:disabled), .btn.success:hover {
+  background: #388e3c;
+}
+button.danger {
+  background: #c62828;
+}
+button.danger:hover:not(:disabled) {
+  background: #d32f2f;
+}
+
+.part-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.86rem;
+  margin-top: 0.9rem;
+}
+.part-table th, .part-table td {
+  text-align: left;
+  padding: 0.5rem 0.6rem;
+  border-bottom: 1px solid var(--line);
+}
+.part-table th {
+  color: var(--dim);
+  font-weight: 600;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.part-table code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: #81d4fa;
+  font-size: 0.84rem;
+}
+.progress-wrap {
+  width: 100%;
+  background: #0d1015;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  height: 10px;
+  overflow: hidden;
+}
+.progress-bar {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, var(--accent), var(--ok));
+  transition: width 0.12s ease;
+}
+
+.kv {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.35rem 1rem;
+  font-size: 0.88rem;
+  margin: 0;
+}
+.kv dt { color: var(--dim); }
+.kv dd { margin: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; word-break: break-word; }
+
+.terminal-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.6rem;
+}
+.terminal {
+  background: #080a0d;
+  color: #a3be8c;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.83rem;
+  padding: 0.85rem;
+  height: 320px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  border: 1px solid #222630;
+  border-radius: 8px;
+  line-height: 1.45;
+}
+
+.cli-box {
+  background: #0b0d12;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.75rem 0.9rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.82rem;
+  color: #88c0d0;
+  overflow-x: auto;
+  white-space: pre;
+  margin: 0.5rem 0 0;
+}
+
+.dl-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+.dl-card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.85rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+.dl-card h4 {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--accent);
+}
+.dl-card p {
+  margin: 0.2rem 0 0;
+  font-size: 0.8rem;
+  color: var(--dim);
+}
+
+footer {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 1.25rem 1rem 2.5rem;
+  border-top: 1px solid var(--line);
+  color: var(--dim);
+  font-size: 0.84rem;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <div class="brand">
+      <div class="brand-icon" aria-hidden="true">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2">
+          <rect x="4" y="4" width="16" height="16" rx="2"/>
+          <rect x="9" y="9" width="6" height="6"/>
+          <path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 14h3M1 9h3M1 14h3"/>
+        </svg>
+      </div>
+      <div>
+        <h1>ESP32 Web Debugger — Web Flasher</h1>
+        <p>Pure ESP-IDF v5.3.1 GPIO / Bus / ADC Debugger &amp; Hardware Benchmark Suite</p>
+      </div>
+    </div>
+    <div class="header-actions">
+      <span class="pill" id="versionPill">Firmware <strong id="fwVersionText">v1.1.0</strong></span>
+      <span class="pill"><span class="dot" id="connDot"></span><span id="connStatus">Disconnected</span></span>
+      <a class="pill" href="https://github.com/Zektopic/esp32-web-debugger-IDF" target="_blank" rel="noopener">
+        GitHub Repo ↗
+      </a>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div id="browserWarn" class="alert warn" hidden>
+    <div>
+      <strong>Web Serial API Not Available:</strong> Your current browser does not support Web Serial flashing.
+      Please open this page in <strong>Google Chrome</strong>, <strong>Microsoft Edge</strong>, <strong>Brave</strong>, or <strong>Opera</strong> on desktop over HTTPS, or use the direct binary downloads &amp; <code>esptool.py</code> commands below.
+    </div>
+  </div>
+
+  <div id="deviceUrlBanner" class="alert ok" hidden>
+    <div>
+      <strong>Device Ready!</strong> Detected ESP32 Web Debugger UI on serial:
+      <a id="detectedUrlLink" href="http://192.168.4.1/" target="_blank" rel="noopener" style="font-weight:700;margin-left:0.35rem">http://192.168.4.1/ ↗</a>
+      <span style="color:var(--dim);margin-left:0.5rem">(Default AP: <code>ESP32-Debugger</code> / Password: <code>12345678</code>)</span>
+    </div>
+  </div>
+
+  <!-- STEP 1: SELECT OR AUTO-DETECT TARGET -->
+  <div class="panel">
+    <div class="step-header">
+      <h2 class="step-title"><span class="step-num">1</span> Select Target Chip (or Connect to Auto-Detect)</h2>
+      <span style="font-size:0.84rem;color:var(--dim)">Connecting via USB automatically detects the ESP32 silicon variant</span>
+    </div>
+    <div class="target-grid" id="targetGrid"></div>
+  </div>
+
+  <!-- STEP 2: FLASH CONFIGURATION & DEVICE INFO -->
+  <div class="two-col">
+    <div class="panel">
+      <div class="step-header">
+        <h2 class="step-title"><span class="step-num">2</span> Connect &amp; Flash Firmware (<code style="font-size:0.9rem;color:var(--accent)">esptool-js</code>)</h2>
+        <span class="badge accent" id="selectedTargetBadge">Target: ESP32</span>
+      </div>
+
+      <div class="controls-grid">
+        <div>
+          <label for="flashModeSelect">Flash Image Mode</label>
+          <select id="flashModeSelect">
+            <option value="full">Full Flash (Bootloader + Partitions + App + SPIFFS UI)</option>
+            <option value="merged">Merged Full Image (Single binary @ boot offset)</option>
+            <option value="app_spiffs">Update App + SPIFFS Web UI (Keep NVS)</option>
+            <option value="app_only">Update App Only (@ 0x10000)</option>
+            <option value="custom">Custom Local .bin File</option>
+          </select>
+        </div>
+        <div>
+          <label for="baudSelect">Flash Baud Rate</label>
+          <select id="baudSelect">
+            <option value="921600" selected>921600 baud (Fastest)</option>
+            <option value="460800">460800 baud</option>
+            <option value="230400">230400 baud</option>
+            <option value="115200">115200 baud (Most Compatible)</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="customFileRow" class="controls-grid" hidden>
+        <div>
+          <label for="customFileInput">Local Binary (<code>.bin</code>)</label>
+          <input type="file" id="customFileInput" accept=".bin">
+        </div>
+        <div>
+          <label for="customOffsetInput">Flash Offset (Hex)</label>
+          <input type="text" id="customOffsetInput" value="0x10000" placeholder="0x10000">
+        </div>
+      </div>
+
+      <div class="check-row">
+        <label><input type="checkbox" id="eraseAllCheck"> Erase entire flash before writing</label>
+        <label><input type="checkbox" id="autoMonitorCheck" checked> Open Serial Monitor after flashing</label>
+      </div>
+
+      <div class="btn-row">
+        <button id="connectBtn" class="secondary" type="button">🔌 Connect &amp; Detect Chip</button>
+        <button id="flashBtn" class="success" type="button">⚡ Flash Firmware</button>
+        <button id="eraseBtn" class="danger" type="button" disabled>🗑️ Erase Flash</button>
+        <button id="disconnectBtn" class="secondary" type="button" disabled>Disconnect</button>
+      </div>
+
+      <!-- Partition layout & live progress table -->
+      <table class="part-table" aria-label="Partitions to flash">
+        <thead>
+          <tr>
+            <th>Partition</th>
+            <th>Offset</th>
+            <th>File</th>
+            <th style="width:34%">Progress</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="partTableBody"></tbody>
+      </table>
+    </div>
+
+    <!-- Connected Hardware & Quick Guide -->
+    <div class="panel" style="display:flex;flex-direction:column;justify-content:space-between;gap:1rem">
+      <div>
+        <div class="step-header">
+          <h2 class="step-title"><span class="step-num">i</span> Connected Device &amp; Quick Start</h2>
+          <span class="badge" id="detectBadge">Not connected</span>
+        </div>
+        <dl class="kv" id="deviceInfoKv">
+          <dt>Chip Variant</dt><dd id="infoChip">—</dd>
+          <dt>MAC Address</dt><dd id="infoMac">—</dd>
+          <dt>Flash Size</dt><dd id="infoFlash">—</dd>
+          <dt>Crystal</dt><dd id="infoCrystal">—</dd>
+          <dt>Features</dt><dd id="infoFeatures">—</dd>
+          <dt>Boot Offset</dt><dd id="infoBootOffset">0x1000</dd>
+        </dl>
+      </div>
+
+      <div style="border-top:1px solid var(--line);padding-top:0.9rem;font-size:0.86rem;color:var(--dim)">
+        <strong style="color:var(--text);display:block;margin-bottom:0.35rem">After Flashing:</strong>
+        1. Connect to Wi-Fi SSID <code>ESP32-Debugger</code> (password <code>12345678</code>).<br>
+        2. Open <a href="http://192.168.4.1/" target="_blank" rel="noopener"><code>http://192.168.4.1/</code></a> in your browser.<br>
+        3. Use the Serial Monitor below to watch boot logs, station IP, and <code>BENCH_RESULT</code> JSON output.<br>
+        <span style="display:inline-block;margin-top:0.35rem;color:#ffe082">Tip: If connection times out, hold the board's <strong>BOOT / IO0</strong> button while clicking Connect.</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 3: CONSOLE LOG & SERIAL MONITOR -->
+  <div class="panel">
+    <div class="terminal-header">
+      <h2 class="step-title"><span class="step-num">3</span> ESPTool Flasher Log &amp; Live Serial Monitor (115200 baud)</h2>
+      <div class="btn-row">
+        <button id="monitorBtn" class="secondary" type="button">🖥️ Start Serial Monitor</button>
+        <button id="resetBoardBtn" class="secondary" type="button" disabled>🔄 Reset Board</button>
+        <button id="clearLogBtn" class="secondary" type="button">Clear</button>
+        <button id="downloadLogBtn" class="secondary" type="button">Download Log</button>
+      </div>
+    </div>
+    <div id="terminal" class="terminal" role="log" aria-live="polite"></div>
+  </div>
+
+  <!-- STEP 4: DIRECT DOWNLOADS & CLI FLASHING -->
+  <div class="panel">
+    <div class="step-header">
+      <h2 class="step-title"><span class="step-num">4</span> Direct Firmware Downloads &amp; <code>esptool.py</code> CLI</h2>
+      <span style="font-size:0.84rem;color:var(--dim)" id="dlTargetSubtitle">Showing binaries for ESP32</span>
+    </div>
+
+    <div class="dl-grid" id="dlGrid"></div>
+
+    <div style="margin-top:1.1rem">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:0.5rem">
+        <label style="margin:0">Command-line flashing with <code>esptool.py</code> (Full 4-partition write):</label>
+        <button id="copyCliBtn" class="secondary" type="button" style="padding:0.25rem 0.65rem;font-size:0.78rem">Copy Command</button>
+      </div>
+      <div id="cliBox" class="cli-box"></div>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <div>
+    <strong>ESP32 Web Debugger (Pure ESP-IDF v5.3.1)</strong> · Powered by <a href="https://github.com/espressif/esptool-js" target="_blank" rel="noopener">esptool-js</a> &amp; Web Serial API
+  </div>
+  <div>
+    <a href="https://github.com/Zektopic/esp32-web-debugger-IDF" target="_blank" rel="noopener">Source Code</a> ·
+    <a href="https://github.com/Zektopic/esp32-web-debugger-IDF/releases" target="_blank" rel="noopener">Releases</a> ·
+    <a href="https://github.com/Zektopic/esp32-web-debugger-IDF/actions" target="_blank" rel="noopener">CI Builds</a>
+  </div>
+</footer>
+
+<script type="module">
+import { ESPLoader, Transport } from './esptool-js.bundle.js';
+
+const TARGETS = [
+  {
+    id: 'esp32',
+    name: 'ESP32',
+    dir: 'ESP32',
+    bootOffset: 0x1000,
+    arch: '2× Xtensa LX6 @ 240 MHz',
+    wifi: 'Wi-Fi b/g/n',
+    coproc: 'ULP-FSM',
+    crypto: 'AES · SHA · RSA',
+    chipMatch: ['ESP32']
+  },
+  {
+    id: 'esp32s3',
+    name: 'ESP32-S3',
+    dir: 'ESP32-S3',
+    bootOffset: 0x0,
+    arch: '2× Xtensa LX7 @ 240 MHz',
+    wifi: 'Wi-Fi b/g/n',
+    coproc: 'ULP-RISC-V',
+    crypto: 'AES · SHA · RSA · HMAC · DS',
+    chipMatch: ['ESP32-S3']
+  },
+  {
+    id: 'esp32c3',
+    name: 'ESP32-C3',
+    dir: 'ESP32-C3',
+    bootOffset: 0x0,
+    arch: '1× RISC-V @ 160 MHz',
+    wifi: 'Wi-Fi b/g/n',
+    coproc: 'Temp Sensor',
+    crypto: 'AES · SHA · RSA · HMAC · DS',
+    chipMatch: ['ESP32-C3']
+  },
+  {
+    id: 'esp32c6',
+    name: 'ESP32-C6',
+    dir: 'ESP32-C6',
+    bootOffset: 0x0,
+    arch: '1× RISC-V @ 160 MHz',
+    wifi: 'Wi-Fi 6 (802.11ax)',
+    coproc: 'LP RISC-V Core',
+    crypto: 'AES · SHA · RSA · ECC · HMAC',
+    chipMatch: ['ESP32-C6']
+  },
+  {
+    id: 'esp32s2',
+    name: 'ESP32-S2',
+    dir: 'ESP32-S2',
+    bootOffset: 0x1000,
+    arch: '1× Xtensa LX7 @ 240 MHz',
+    wifi: 'Wi-Fi b/g/n',
+    coproc: 'ULP-RISC-V',
+    crypto: 'AES · SHA · RSA · HMAC · DS',
+    chipMatch: ['ESP32-S2']
+  },
+  {
+    id: 'esp32c2',
+    name: 'ESP32-C2',
+    dir: 'ESP32-C2',
+    bootOffset: 0x0,
+    arch: '1× RISC-V @ 120 MHz',
+    wifi: 'Wi-Fi b/g/n',
+    coproc: 'Temp Sensor',
+    crypto: 'SHA · ECC',
+    chipMatch: ['ESP32-C2']
+  }
+];
+
+let selectedTarget = TARGETS[0];
+let fwVersion = '1.1.0';
+let port = null;
+let transport = null;
+let esploader = null;
+let isConnectedBootloader = false;
+let isMonitoring = false;
+let monitorReader = null;
+let monitorAbort = false;
+
+const el = (id) => document.getElementById(id);
+const termEl = el('terminal');
+
+function logLine(text = '', newline = true) {
+  termEl.textContent += text + (newline ? '\n' : '');
+  termEl.scrollTop = termEl.scrollHeight;
+  checkSerialForUrl(text);
+}
+
+function clearLog() {
+  termEl.textContent = '';
+}
+
+function checkSerialForUrl(chunk) {
+  const match = chunk.match(/web UI:\s*(http:\/\/[0-9a-zA-Z.:-]+\/?)/i);
+  if (match && match[1]) {
+    const url = match[1];
+    const link = el('detectedUrlLink');
+    link.href = url;
+    link.textContent = url + ' ↗';
+    el('deviceUrlBanner').hidden = false;
+  }
+}
+
+const espLoaderTerminal = {
+  clean() { clearLog(); },
+  writeLine(data) { logLine(String(data), true); },
+  write(data) { logLine(String(data), false); }
+};
+
+function hexAddr(n) {
+  return '0x' + Number(n).toString(16).toUpperCase();
+}
+
+function getActiveParts(target) {
+  const mode = el('flashModeSelect').value;
+  if (mode === 'full') {
+    return [
+      { name: 'Bootloader', offset: target.bootOffset, path: `${target.dir}/bootloader.bin` },
+      { name: 'Partition Table', offset: 0x8000, path: `${target.dir}/partitions.bin` },
+      { name: 'Application (factory)', offset: 0x10000, path: `${target.dir}/firmware.bin` },
+      { name: 'Web UI (SPIFFS)', offset: 0x180000, path: `${target.dir}/spiffs.bin` }
+    ];
+  }
+  if (mode === 'merged') {
+    return [
+      { name: 'Merged Full Flash Image', offset: 0x0, path: `${target.dir}/full.bin` }
+    ];
+  }
+  if (mode === 'app_spiffs') {
+    return [
+      { name: 'Application (factory)', offset: 0x10000, path: `${target.dir}/firmware.bin` },
+      { name: 'Web UI (SPIFFS)', offset: 0x180000, path: `${target.dir}/spiffs.bin` }
+    ];
+  }
+  if (mode === 'app_only') {
+    return [
+      { name: 'Application (factory)', offset: 0x10000, path: `${target.dir}/firmware.bin` }
+    ];
+  }
+  const customOffset = parseInt(el('customOffsetInput').value || '0x10000', 16) || 0x10000;
+  const fileObj = el('customFileInput').files[0];
+  return [
+    { name: 'Custom Binary', offset: customOffset, path: fileObj ? fileObj.name : '(select .bin file)', customFile: fileObj }
+  ];
+}
+
+function renderTargets(autoDetectedId = null) {
+  const grid = el('targetGrid');
+  grid.innerHTML = '';
+  for (const t of TARGETS) {
+    const card = document.createElement('div');
+    card.className = 'target-card' + (t.id === selectedTarget.id ? ' selected' : '');
+    const isAuto = autoDetectedId === t.id;
+    card.innerHTML = `
+      <div class="chip-head">
+        <h3>${t.name}</h3>
+        ${isAuto ? '<span class="badge ok">Detected</span>' : `<span class="badge">${hexAddr(t.bootOffset)}</span>`}
+      </div>
+      <div class="arch">${t.arch}</div>
+      <div class="specs">
+        <span class="badge accent">${t.wifi}</span>
+        <span class="badge">${t.coproc}</span>
+      </div>
+      <div class="arch" style="margin-top:0.15rem">${t.crypto}</div>
+    `;
+    card.addEventListener('click', () => {
+      selectedTarget = t;
+      renderTargets(autoDetectedId);
+      updateTargetUI();
+    });
+    grid.appendChild(card);
+  }
+}
+
+function renderPartTable() {
+  const parts = getActiveParts(selectedTarget);
+  const tbody = el('partTableBody');
+  tbody.innerHTML = '';
+  parts.forEach((p, idx) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><strong>${p.name}</strong></td>
+      <td><code>${hexAddr(p.offset)}</code></td>
+      <td><code>${p.path}</code></td>
+      <td>
+        <div class="progress-wrap"><div class="progress-bar" id="progBar-${idx}"></div></div>
+      </td>
+      <td><span class="badge" id="progStatus-${idx}">Ready</span></td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function renderDownloads() {
+  const t = selectedTarget;
+  el('dlTargetSubtitle').textContent = `Showing binaries for ${t.name} (v${fwVersion})`;
+  const items = [
+    {
+      title: `${t.name} Merged Full Binary`,
+      desc: `Single combined image (bootloader + partitions + app + SPIFFS). Flash at 0x0.`,
+      href: `${t.dir}/full.bin`,
+      filename: `${t.id}_gpio_debugger_full_v${fwVersion}.bin`,
+      btnText: 'Download full.bin'
+    },
+    {
+      title: `${t.name} Full Release ZIP`,
+      desc: 'Archive containing full.bin, bootloader.bin, partitions.bin, firmware.bin, and spiffs.bin.',
+      href: `zips/${t.id}_gpio_debugger_full_v${fwVersion}.zip`,
+      filename: `${t.id}_gpio_debugger_full_v${fwVersion}.zip`,
+      btnText: 'Download Full .zip'
+    },
+    {
+      title: `${t.name} App Firmware (0x10000)`,
+      desc: 'Application partition binary only (factory @ 0x10000).',
+      href: `${t.dir}/firmware.bin`,
+      filename: `${t.id}_gpio_debugger_v${fwVersion}.bin`,
+      btnText: 'Download firmware.bin'
+    },
+    {
+      title: 'Web UI SPIFFS Image (0x180000)',
+      desc: 'SPIFFS partition image containing the single-file Web Debugger UI (spiffs @ 0x180000).',
+      href: `${t.dir}/spiffs.bin`,
+      filename: 'spiffs.bin',
+      btnText: 'Download spiffs.bin'
+    }
+  ];
+
+  const grid = el('dlGrid');
+  grid.innerHTML = '';
+  for (const item of items) {
+    const card = document.createElement('div');
+    card.className = 'dl-card';
+    card.innerHTML = `
+      <div>
+        <h4>${item.title}</h4>
+        <p>${item.desc}</p>
+      </div>
+      <div>
+        <a class="btn secondary" href="${item.href}" download="${item.filename}" style="width:100%">⬇ ${item.btnText}</a>
+      </div>
+    `;
+    grid.appendChild(card);
+  }
+
+  const cli = `esptool.py --chip ${t.id} --baud 921600 write_flash --flash_mode keep --flash_freq keep --flash_size keep \\\n  ${hexAddr(t.bootOffset)} ${t.dir}/bootloader.bin \\\n  0x8000 ${t.dir}/partitions.bin \\\n  0x10000 ${t.dir}/firmware.bin \\\n  0x180000 ${t.dir}/spiffs.bin`;
+  el('cliBox').textContent = cli;
+}
+
+function updateTargetUI() {
+  el('selectedTargetBadge').textContent = `Target: ${selectedTarget.name}`;
+  el('infoBootOffset').textContent = hexAddr(selectedTarget.bootOffset);
+  el('customFileRow').hidden = el('flashModeSelect').value !== 'custom';
+  renderPartTable();
+  renderDownloads();
+}
+
+function setConnectionState(state, label) {
+  const dot = el('connDot');
+  dot.className = 'dot' + (state === 'connected' ? ' on' : state === 'busy' ? ' busy' : '');
+  el('connStatus').textContent = label;
+}
+
+async function fetchVersion() {
+  try {
+    const res = await fetch('version', { cache: 'no-cache' });
+    if (res.ok) {
+      const txt = await res.text();
+      const firstLine = txt.split(/\r?\n/)[0].trim();
+      if (firstLine) {
+        fwVersion = firstLine;
+        el('fwVersionText').textContent = 'v' + fwVersion;
+        renderDownloads();
+      }
+    }
+  } catch (_) {}
+}
+
+async function stopMonitor() {
+  if (!isMonitoring) return;
+  monitorAbort = true;
+  try {
+    if (monitorReader) {
+      await monitorReader.cancel();
+      monitorReader.releaseLock();
+      monitorReader = null;
+    }
+  } catch (_) {}
+  try {
+    if (port && port.readable) {
+      await port.close();
+    }
+  } catch (_) {}
+  isMonitoring = false;
+  el('monitorBtn').textContent = '🖥️ Start Serial Monitor';
+  el('resetBoardBtn').disabled = true;
+}
+
+async function disconnectAll() {
+  await stopMonitor();
+  try {
+    if (transport) {
+      await transport.disconnect();
+      await transport.waitForUnlock(1500);
+    }
+  } catch (_) {}
+  try {
+    if (port) {
+      await port.close();
+    }
+  } catch (_) {}
+  transport = null;
+  esploader = null;
+  port = null;
+  isConnectedBootloader = false;
+  setConnectionState('disconnected', 'Disconnected');
+  el('eraseBtn').disabled = true;
+  el('disconnectBtn').disabled = true;
+  el('detectBadge').textContent = 'Not connected';
+  el('detectBadge').className = 'badge';
+}
+
+async function connectBootloader() {
+  if (!('serial' in navigator)) {
+    el('browserWarn').hidden = false;
+    throw new Error('Web Serial API is not supported in this browser.');
+  }
+  await stopMonitor();
+  if (isConnectedBootloader && esploader) {
+    return esploader;
+  }
+
+  try {
+    setConnectionState('busy', 'Connecting...');
+    if (!port) {
+      port = await navigator.serial.requestPort();
+    }
+    const baudrate = parseInt(el('baudSelect').value, 10) || 921600;
+    transport = new Transport(port, true);
+    esploader = new ESPLoader({
+      transport,
+      baudrate,
+      romBaudrate: 115200,
+      terminal: espLoaderTerminal
+    });
+
+    logLine(`[esptool-js] Connecting to ESP32 ROM bootloader (target baud: ${baudrate})...`);
+    const chipDesc = await esploader.main();
+    isConnectedBootloader = true;
+
+    const chipName = (esploader.chip && esploader.chip.CHIP_NAME) ? esploader.chip.CHIP_NAME : chipDesc;
+    el('infoChip').textContent = chipDesc || chipName;
+
+    // Auto-select matching target card
+    const matched = TARGETS.find(t =>
+      t.chipMatch.some(m => chipName.toUpperCase() === m.toUpperCase() || (chipDesc && chipDesc.toUpperCase().startsWith(m.toUpperCase())))
+    );
+    if (matched) {
+      selectedTarget = matched;
+      renderTargets(matched.id);
+      updateTargetUI();
+      logLine(`[esptool-js] Auto-selected target profile: ${matched.name} (${matched.dir})`);
+    }
+
+    try {
+      const mac = await esploader.chip.readMac(esploader);
+      if (mac) el('infoMac').textContent = mac;
+    } catch (_) {}
+
+    try {
+      const feats = await esploader.chip.getChipFeatures(esploader);
+      if (Array.isArray(feats)) el('infoFeatures').textContent = feats.join(', ');
+    } catch (_) {}
+
+    try {
+      const xtal = await esploader.chip.getCrystalFreq(esploader);
+      if (xtal) el('infoCrystal').textContent = `${xtal} MHz`;
+    } catch (_) {}
+
+    try {
+      const fsize = await esploader.detectFlashSize();
+      if (fsize) el('infoFlash').textContent = fsize;
+    } catch (_) {}
+
+    setConnectionState('connected', `Connected (${chipName})`);
+    el('detectBadge').textContent = `Connected: ${chipName}`;
+    el('detectBadge').className = 'badge ok';
+    el('eraseBtn').disabled = false;
+    el('disconnectBtn').disabled = false;
+    return esploader;
+  } catch (err) {
+    logLine(`[Error] Connection failed: ${err.message || err}`);
+    await disconnectAll();
+    throw err;
+  }
+}
+
+async function fetchBinaryPart(part, index) {
+  const statusEl = el(`progStatus-${index}`);
+  if (part.customFile) {
+    statusEl.textContent = 'Reading file...';
+    const buf = await part.customFile.arrayBuffer();
+    return new Uint8Array(buf);
+  }
+  statusEl.textContent = 'Downloading...';
+  const res = await fetch(part.path, { cache: 'no-cache' });
+  if (!res.ok) {
+    throw new Error(`Failed to download ${part.path} (HTTP ${res.status})`);
+  }
+  const buf = await res.arrayBuffer();
+  return new Uint8Array(buf);
+}
+
+async function flashFirmware() {
+  const parts = getActiveParts(selectedTarget);
+  if (el('flashModeSelect').value === 'custom' && !parts[0].customFile) {
+    alert('Please choose a local .bin file first.');
+    return;
+  }
+
+  el('flashBtn').disabled = true;
+  el('connectBtn').disabled = true;
+  try {
+    const loader = await connectBootloader();
+    // Re-compute parts in case auto-detection switched selectedTarget!
+    const activeParts = getActiveParts(selectedTarget);
+    renderPartTable();
+
+    const fileArray = [];
+    for (let i = 0; i < activeParts.length; i++) {
+      const p = activeParts[i];
+      logLine(`[esptool-js] Fetching ${p.name} (${p.path}) @ ${hexAddr(p.offset)}...`);
+      const data = await fetchBinaryPart(p, i);
+      el(`progStatus-${i}`).textContent = `${(data.byteLength / 1024).toFixed(1)} KB`;
+      fileArray.push({ data, address: p.offset });
+    }
+
+    setConnectionState('busy', `Flashing ${selectedTarget.name}...`);
+    const eraseAll = el('eraseAllCheck').checked;
+
+    await loader.writeFlash({
+      fileArray,
+      flashSize: 'keep',
+      flashMode: 'keep',
+      flashFreq: 'keep',
+      eraseAll,
+      compress: true,
+      reportProgress(fileIndex, written, total) {
+        const pct = total > 0 ? Math.min(100, Math.round((written / total) * 100)) : 0;
+        const bar = el(`progBar-${fileIndex}`);
+        const st = el(`progStatus-${fileIndex}`);
+        if (bar) bar.style.width = `${pct}%`;
+        if (st) {
+          st.textContent = pct >= 100 ? 'Verified ✓' : `${pct}%`;
+          st.className = pct >= 100 ? 'badge ok' : 'badge accent';
+        }
+      }
+    });
+
+    logLine('[esptool-js] Flash complete! Performing hard reset into firmware...');
+    await loader.after('hard_reset');
+    logLine('[esptool-js] Board reset. ESP32 Web Debugger is starting...');
+    setConnectionState('connected', 'Flash Complete ✓');
+
+    if (el('autoMonitorCheck').checked) {
+      const savedPort = port;
+      await disconnectAll();
+      port = savedPort;
+      await startSerialMonitor();
+    }
+  } catch (err) {
+    logLine(`[Error] Flashing failed: ${err.message || err}`);
+  } finally {
+    el('flashBtn').disabled = false;
+    el('connectBtn').disabled = false;
+  }
+}
+
+async function eraseEntireFlash() {
+  if (!confirm('Erase entire SPI flash on the connected ESP32?')) return;
+  el('eraseBtn').disabled = true;
+  el('flashBtn').disabled = true;
+  try {
+    const loader = await connectBootloader();
+    setConnectionState('busy', 'Erasing Flash...');
+    logLine('[esptool-js] Erasing full flash memory (this may take 10–30 seconds)...');
+    await loader.eraseFlash();
+    logLine('[esptool-js] Flash erase complete ✓');
+    setConnectionState('connected', 'Erase Complete ✓');
+  } catch (err) {
+    logLine(`[Error] Erase failed: ${err.message || err}`);
+  } finally {
+    el('eraseBtn').disabled = !isConnectedBootloader;
+    el('flashBtn').disabled = false;
+  }
+}
+
+async function startSerialMonitor() {
+  if (!('serial' in navigator)) {
+    el('browserWarn').hidden = false;
+    return;
+  }
+  if (isMonitoring) {
+    await stopMonitor();
+    setConnectionState('disconnected', 'Disconnected');
+    return;
+  }
+
+  try {
+    if (isConnectedBootloader) {
+      const savedPort = port;
+      await disconnectAll();
+      port = savedPort;
+    }
+    if (!port) {
+      port = await navigator.serial.requestPort();
+    }
+    await port.open({ baudRate: 115200 });
+    isMonitoring = true;
+    monitorAbort = false;
+    el('monitorBtn').textContent = '⏹️ Stop Serial Monitor';
+    el('resetBoardBtn').disabled = false;
+    el('disconnectBtn').disabled = false;
+    setConnectionState('connected', 'Serial Monitor (115200)');
+    logLine('\n--- Serial Monitor Opened @ 115200 baud ---');
+
+    const decoder = new TextDecoder();
+    monitorReader = port.readable.getReader();
+    while (!monitorAbort) {
+      const { value, done } = await monitorReader.read();
+      if (done) break;
+      if (value) {
+        const text = decoder.decode(value, { stream: true });
+        logLine(text, false);
+      }
+    }
+  } catch (err) {
+    if (!monitorAbort) {
+      logLine(`\n[Serial Monitor Error] ${err.message || err}`);
+    }
+  } finally {
+    await stopMonitor();
+  }
+}
+
+async function pulseBoardReset() {
+  if (!port) return;
+  try {
+    logLine('\n[Serial] Pulsing RTS to reset ESP32...');
+    await port.setSignals({ dataTerminalReady: false, requestToSend: true });
+    await new Promise(r => setTimeout(r, 120));
+    await port.setSignals({ dataTerminalReady: false, requestToSend: false });
+  } catch (err) {
+    logLine(`[Serial] Reset signal error: ${err.message || err}`);
+  }
+}
+
+// Wire up UI events
+if (!('serial' in navigator)) {
+  el('browserWarn').hidden = false;
+}
+
+el('flashModeSelect').addEventListener('change', updateTargetUI);
+el('customFileInput').addEventListener('change', updateTargetUI);
+el('customOffsetInput').addEventListener('input', updateTargetUI);
+
+el('connectBtn').addEventListener('click', () => connectBootloader().catch(() => {}));
+el('flashBtn').addEventListener('click', () => flashFirmware());
+el('eraseBtn').addEventListener('click', () => eraseEntireFlash());
+el('disconnectBtn').addEventListener('click', () => disconnectAll());
+el('monitorBtn').addEventListener('click', () => startSerialMonitor());
+el('resetBoardBtn').addEventListener('click', () => pulseBoardReset());
+el('clearLogBtn').addEventListener('click', () => clearLog());
+el('downloadLogBtn').addEventListener('click', () => {
+  const blob = new Blob([termEl.textContent], { type: 'text/plain;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `esp32-web-debugger-serial-${Date.now()}.log`;
+  a.click();
+});
+el('copyCliBtn').addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText(el('cliBox').textContent);
+    const btn = el('copyCliBtn');
+    const prev = btn.textContent;
+    btn.textContent = 'Copied ✓';
+    setTimeout(() => { btn.textContent = prev; }, 1500);
+  } catch (_) {}
+});
+
+renderTargets();
+updateTargetUI();
+fetchVersion();
+logLine('ESP32 Web Debugger — Browser Flasher Ready (esptool-js v0.7.0).');
+logLine('Select a chip target above or click "Connect & Detect Chip" to auto-identify your board over USB.');
+</script>
+</body>
+</html>

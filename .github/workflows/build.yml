@@ -59,24 +59,55 @@ jobs:
           chip="${{ matrix.target.chip }}"
           version="${{ env.VERSION }}"
           boot_offset="${{ matrix.target.boot_offset }}"
-          
+          ota_dir="release/ota/${{ matrix.target.ota_dir }}"
+          boot_offset_dec=$((boot_offset))
+
           mkdir -p release/zips
-          mkdir -p release/ota/${{ matrix.target.ota_dir }}
+          mkdir -p "$ota_dir"
 
           cp version release/ota/
-          cp $folder/esp32-web-debugger.bin release/ota/${{ matrix.target.ota_dir }}/firmware.bin
+          cp "$folder/esp32-web-debugger.bin" "$ota_dir/firmware.bin"
+          cp "$folder/bootloader/bootloader.bin" "$ota_dir/bootloader.bin"
+          cp "$folder/partition_table/partition-table.bin" "$ota_dir/partitions.bin"
+          cp "$folder/spiffs.bin" "$ota_dir/spiffs.bin"
 
           # Rename the main binary
-          mv $folder/esp32-web-debugger.bin $folder/${chip}_gpio_debugger_v${version}.bin
+          mv "$folder/esp32-web-debugger.bin" "$folder/${chip}_gpio_debugger_v${version}.bin"
 
           # Copy other binaries for release
-          cp $folder/bootloader/bootloader.bin $folder/bootloader.bin
-          cp $folder/partition_table/partition-table.bin $folder/partitions.bin
-          
-          esptool.py --chip $chip merge_bin -o $folder/${chip}_gpio_debugger_full_v${version}.bin --flash_mode keep --flash_freq keep --flash_size keep $boot_offset $folder/bootloader.bin 0x10000 $folder/${chip}_gpio_debugger_v${version}.bin 0x8000 $folder/partitions.bin
-          
-          zip -j release/zips/${chip}_gpio_debugger_update_v${version}.zip $folder/${chip}_gpio_debugger_v${version}.bin
-          zip -j release/zips/${chip}_gpio_debugger_full_v${version}.zip $folder/${chip}_gpio_debugger_full_v${version}.bin $folder/bootloader.bin $folder/partitions.bin
+          cp "$folder/bootloader/bootloader.bin" "$folder/bootloader.bin"
+          cp "$folder/partition_table/partition-table.bin" "$folder/partitions.bin"
+
+          esptool.py --chip "$chip" merge_bin -o "$folder/${chip}_gpio_debugger_full_v${version}.bin" \
+            --flash_mode keep --flash_freq keep --flash_size keep \
+            "$boot_offset" "$folder/bootloader.bin" \
+            0x8000 "$folder/partitions.bin" \
+            0x10000 "$folder/${chip}_gpio_debugger_v${version}.bin" \
+            0x180000 "$folder/spiffs.bin"
+
+          cp "$folder/${chip}_gpio_debugger_full_v${version}.bin" "$ota_dir/full.bin"
+
+          cat > "$ota_dir/manifest.json" <<EOF
+          {
+            "name": "ESP32 Web Debugger (${{ matrix.target.ota_dir }})",
+            "version": "${version}",
+            "new_install_prompt_erase": false,
+            "builds": [
+              {
+                "chipFamily": "${{ matrix.target.ota_dir }}",
+                "parts": [
+                  { "path": "bootloader.bin", "offset": ${boot_offset_dec} },
+                  { "path": "partitions.bin", "offset": 32768 },
+                  { "path": "firmware.bin", "offset": 65536 },
+                  { "path": "spiffs.bin", "offset": 1572864 }
+                ]
+              }
+            ]
+          }
+          EOF
+
+          zip -j "release/zips/${chip}_gpio_debugger_update_v${version}.zip" "$folder/${chip}_gpio_debugger_v${version}.bin" "$folder/spiffs.bin"
+          zip -j "release/zips/${chip}_gpio_debugger_full_v${version}.zip" "$folder/${chip}_gpio_debugger_full_v${version}.bin" "$folder/bootloader.bin" "$folder/partitions.bin" "$folder/spiffs.bin"
 
       - name: Upload firmware zip artifact
         uses: actions/upload-artifact@v4
@@ -93,7 +124,7 @@ jobs:
   release:
     runs-on: [self-hosted, manupa-hnx]
     needs: build
-    if: github.ref == 'refs/heads/master'
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
     permissions:
       contents: write
     steps:
@@ -107,8 +138,7 @@ jobs:
         run: |
           TAG="v${{ env.VERSION }}"
           if git show-ref --tags --verify --quiet "refs/tags/${TAG}" && [[ "${TAG}" != *"DEV"* ]]; then
-            echo "Error: Tag ${TAG} already exists."
-            exit 1
+            echo "Tag ${TAG} already exists, updating existing release."
           fi
 
       - name: Download all firmware artifacts
@@ -121,55 +151,63 @@ jobs:
           mkdir -p release_final
           find release_artifacts -name "*.zip" -exec mv {} release_final/ \;
 
-      - name: Create draft release
-        uses: "marvinpinto/action-automatic-releases@latest"
-        with:
-          repo_token: "${{ secrets.GITHUB_TOKEN }}"
-          prerelease: false
-          draft: true
-          automatic_release_tag: v${{ env.VERSION }}
-          title: v${{ env.VERSION }}
-          files: |
-            release_final/*.zip
-
       - name: Create changelog from version file
         run: tail -n +3 version | sed 's/^/- /' > changelog
 
-      - name: Update release with changelog
+      - name: Create or update release
         uses: ncipollo/release-action@v1
         with:
           allowUpdates: true
           name: v${{ env.VERSION }}
           tag: v${{ env.VERSION }}
-          draft: true
+          draft: false
           bodyFile: "changelog"
+          artifacts: "release_final/*.zip"
 
   deploy:
     runs-on: [self-hosted, manupa-hnx]
     needs: build
-    if: github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/master'
+    if: github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    permissions:
+      contents: write
     steps:
-      - name: Download all OTA artifacts
+      - uses: actions/checkout@v4
+      - name: Configure Git safe directory
+        run: git config --global --add safe.directory '*'
+
+      - name: Download all build artifacts
         uses: actions/download-artifact@v4
         with:
-          path: ota_artifacts
+          path: all_artifacts
       
-      - name: Assemble final OTA directory
+      - name: Assemble GitHub Pages and OTA directory
         run: |
-          mkdir -p final_ota_dir
-          find ota_artifacts -mindepth 1 -maxdepth 1 -type d | while read -r dir; do
+          mkdir -p final_ota_dir/zips
+          cp -r docs/. final_ota_dir/
+          cp version final_ota_dir/
+
+          find all_artifacts -maxdepth 1 -name "ota-files-*" -type d | while read -r dir; do
             cp -r "$dir"/* final_ota_dir/
           done
+
+          find all_artifacts -name "*.zip" -exec cp {} final_ota_dir/zips/ \;
+
+      - name: Deploy Web Flasher & Firmware to gh-pages
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          folder: final_ota_dir
+          branch: gh-pages
 
       - name: Set release branch for dev
         if: github.ref == 'refs/heads/dev'
         run: echo "RELEASE_BRANCH=releases-staging" >> $GITHUB_ENV
 
-      - name: Set release branch for master
-        if: github.ref == 'refs/heads/master'
+      - name: Set release branch for main/master
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
         run: echo "RELEASE_BRANCH=releases-production" >> $GITHUB_ENV
 
-      - name: Deploy to Github Pages
+      - name: Deploy OTA branch
         uses: JamesIves/github-pages-deploy-action@v4
         with:
           folder: final_ota_dir
