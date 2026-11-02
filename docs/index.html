@@ -26,6 +26,7 @@
   --bad-bg: rgba(229, 57, 53, 0.15);
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 body {
   margin: 0;
   font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
@@ -518,15 +519,23 @@ footer {
         <span class="badge accent" id="selectedTargetBadge">Target: ESP32</span>
       </div>
 
+      <div id="prebuiltBanner" class="alert ok" style="margin-bottom:0.9rem;padding:0.65rem 0.9rem;align-items:center;justify-content:space-between;flex-wrap:wrap">
+        <div>
+          <strong>📦 Pre-built Repository Firmware Loaded:</strong>
+          <span id="prebuiltDesc">ESP32 Web Debugger v1.1.0 for <strong>ESP32</strong> (Ready to flash — no file upload needed)</span>
+        </div>
+        <span class="badge ok" id="prebuiltVerifyBadge">✓ Hosted on Page</span>
+      </div>
+
       <div class="controls-grid">
         <div>
-          <label for="flashModeSelect">Flash Image Mode</label>
+          <label for="flashModeSelect">Firmware Image Preset</label>
           <select id="flashModeSelect">
-            <option value="full">Full Flash (Bootloader + Partitions + App + SPIFFS UI)</option>
-            <option value="merged">Merged Full Image (Single binary @ boot offset)</option>
-            <option value="app_spiffs">Update App + SPIFFS Web UI (Keep NVS)</option>
-            <option value="app_only">Update App Only (@ 0x10000)</option>
-            <option value="custom">Custom Local .bin File</option>
+            <option value="full">Repo v1.1.0 — Full Flash (Bootloader + Partitions + App + SPIFFS UI)</option>
+            <option value="merged">Repo v1.1.0 — Merged Full Image (Single binary @ 0x0)</option>
+            <option value="app_spiffs">Repo v1.1.0 — Update App + SPIFFS Web UI (Keep NVS)</option>
+            <option value="app_only">Repo v1.1.0 — Update App Only (@ 0x10000)</option>
+            <option value="custom">Upload Custom Local .bin File...</option>
           </select>
         </div>
         <div>
@@ -832,16 +841,33 @@ function renderPartTable() {
   tbody.innerHTML = '';
   parts.forEach((p, idx) => {
     const tr = document.createElement('tr');
+    const isCustom = Boolean(p.customFile !== undefined);
     tr.innerHTML = `
       <td><strong>${p.name}</strong></td>
       <td><code>${hexAddr(p.offset)}</code></td>
-      <td><code>${p.path}</code></td>
+      <td><a href="${isCustom ? '#' : p.path}" ${isCustom ? '' : 'target="_blank" rel="noopener"'}><code>${p.path}</code></a> <span id="partSize-${idx}" style="color:var(--dim);font-size:0.78rem"></span></td>
       <td>
         <div class="progress-wrap"><div class="progress-bar" id="progBar-${idx}"></div></div>
       </td>
-      <td><span class="badge" id="progStatus-${idx}">Ready</span></td>
+      <td><span class="badge ok" id="progStatus-${idx}">${isCustom ? (p.customFile ? 'Selected' : 'Choose file') : '✓ Pre-loaded'}</span></td>
     `;
     tbody.appendChild(tr);
+    if (!isCustom) {
+      fetch(p.path, { method: 'HEAD' }).then(res => {
+        const sizeEl = el(`partSize-${idx}`);
+        const stEl = el(`progStatus-${idx}`);
+        if (res.ok) {
+          const len = parseInt(res.headers.get('content-length') || '0', 10);
+          if (len > 0 && sizeEl) {
+            sizeEl.textContent = `(${(len / 1024).toFixed(1)} KB)`;
+          }
+          if (stEl) {
+            stEl.textContent = `✓ Pre-loaded (v${fwVersion})`;
+            stEl.className = 'badge ok';
+          }
+        }
+      }).catch(() => {});
+    }
   });
 }
 
@@ -901,9 +927,12 @@ function renderDownloads() {
 }
 
 function updateTargetUI() {
+  const isCustom = el('flashModeSelect').value === 'custom';
   el('selectedTargetBadge').textContent = `Target: ${selectedTarget.name}`;
   el('infoBootOffset').textContent = hexAddr(selectedTarget.bootOffset);
-  el('customFileRow').hidden = el('flashModeSelect').value !== 'custom';
+  el('customFileRow').hidden = !isCustom;
+  el('prebuiltBanner').hidden = isCustom;
+  el('prebuiltDesc').innerHTML = `ESP32 Web Debugger <strong>v${fwVersion}</strong> for <strong>${selectedTarget.name}</strong> (<code>${selectedTarget.dir}/firmware.bin</code> — ready to flash, no file upload needed)`;
   renderPartTable();
   renderDownloads();
 }
@@ -1004,10 +1033,13 @@ async function connectBootloader() {
     const chipName = (esploader.chip && esploader.chip.CHIP_NAME) ? esploader.chip.CHIP_NAME : chipDesc;
     el('infoChip').textContent = chipDesc || chipName;
 
-    // Auto-select matching target card
-    const matched = TARGETS.find(t =>
-      t.chipMatch.some(m => chipName.toUpperCase() === m.toUpperCase() || (chipDesc && chipDesc.toUpperCase().startsWith(m.toUpperCase())))
-    );
+    // Auto-select matching target card (exact match first, then word-boundary prefix)
+    const matched =
+      TARGETS.find(t => t.chipMatch.some(m => chipName.toUpperCase() === m.toUpperCase())) ||
+      TARGETS.find(t => t.chipMatch.some(m => {
+        const re = new RegExp('^' + m.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![-a-zA-Z0-9])', 'i');
+        return re.test(chipName) || (chipDesc && re.test(chipDesc));
+      }));
     if (matched) {
       selectedTarget = matched;
       renderTargets(matched.id);
