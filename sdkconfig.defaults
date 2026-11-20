@@ -1,0 +1,24 @@
+# Common defaults for every target. Per-chip additions live in
+# sdkconfig.defaults.<target> (picked up automatically by ESP-IDF).
+
+# --- Flash layout: 2 MB image, see partitions.csv -------------------------
+CONFIG_ESPTOOLPY_FLASHSIZE_2MB=y
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+# --- Build for speed so benchmark numbers mean something -------------------
+CONFIG_COMPILER_OPTIMIZATION_PERF=y
+
+# --- Scheduler / watchdog --------------------------------------------------
+# 1 ms ticks give precise vTaskDelay() and meaningful RTOS benchmarks.
+CONFIG_FREERTOS_HZ=1000
+# Benchmarks deliberately keep a core busy for a while (RSA, thermal soak).
+CONFIG_ESP_TASK_WDT_TIMEOUT_S=15
+
+# --- Web server ------------------------------------------------------------
+CONFIG_HTTPD_WS_SUPPORT=y
+
+# --- Crypto: keep every hardware accelerator enabled in mbedTLS -------------
+CONFIG_MBEDTLS_HARDWARE_AES=y
+CONFIG_MBEDTLS_HARDWARE_SHA=y
+CONFIG_MBEDTLS_HARDWARE_MPI=y

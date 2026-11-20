@@ -1,0 +1,217 @@
+name: Build and Release Firmware
+
+permissions:
+  contents: read
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: [self-hosted, manupa-hnx]
+    container:
+      image: espressif/idf:v5.3.1
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - { chip: 'esp32', boot_offset: '0x1000', ota_dir: 'ESP32' }
+          - { chip: 'esp32c3', boot_offset: '0x0', ota_dir: 'ESP32-C3' }
+          - { chip: 'esp32s2', boot_offset: '0x1000', ota_dir: 'ESP32-S2' }
+          - { chip: 'esp32s3', boot_offset: '0x0', ota_dir: 'ESP32-S3' }
+          - { chip: 'esp32c6', boot_offset: '0x0', ota_dir: 'ESP32-C6' }
+          - { chip: 'esp32c2', boot_offset: '0x0', ota_dir: 'ESP32-C2' }
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Configure Git safe directory
+        run: git config --global --add safe.directory '*'
+
+      - name: Fix git ownership
+        run: git config --global --add safe.directory ${{ github.workspace }}
+
+      - name: Set VERSION environment variable from file
+        run: echo "VERSION=$(head -1 version)" >> $GITHUB_ENV
+
+      - name: Update firmware version in source files
+        run: |
+          sed -i -e 's/DEV-VERSION/${{ env.VERSION }}/g' CMakeLists.txt
+
+      - name: Minify HTML files
+        run: |
+          apt-get update && apt-get install -y python3-pip
+          pip3 install htmlmin
+          python3 .github/workflows/shrinkHTML.py
+        shell: sh
+
+      - name: Build firmware for ${{ matrix.target.chip }}
+        run: |
+          . /opt/esp/idf/export.sh
+          idf.py set-target ${{ matrix.target.chip }}
+          idf.py build
+
+      - name: Create combined binary for ${{ matrix.target.chip }}
+        run: |
+          . /opt/esp/idf/export.sh
+          folder="build"
+          chip="${{ matrix.target.chip }}"
+          version="${{ env.VERSION }}"
+          boot_offset="${{ matrix.target.boot_offset }}"
+          ota_dir="release/ota/${{ matrix.target.ota_dir }}"
+          boot_offset_dec=$((boot_offset))
+
+          mkdir -p release/zips
+          mkdir -p "$ota_dir"
+
+          cp version release/ota/
+          cp "$folder/esp32-web-debugger.bin" "$ota_dir/firmware.bin"
+          cp "$folder/bootloader/bootloader.bin" "$ota_dir/bootloader.bin"
+          cp "$folder/partition_table/partition-table.bin" "$ota_dir/partitions.bin"
+          cp "$folder/spiffs.bin" "$ota_dir/spiffs.bin"
+
+          # Rename the main binary
+          mv "$folder/esp32-web-debugger.bin" "$folder/${chip}_gpio_debugger_v${version}.bin"
+
+          # Copy other binaries for release
+          cp "$folder/bootloader/bootloader.bin" "$folder/bootloader.bin"
+          cp "$folder/partition_table/partition-table.bin" "$folder/partitions.bin"
+
+          esptool.py --chip "$chip" merge_bin -o "$folder/${chip}_gpio_debugger_full_v${version}.bin" \
+            --flash_mode keep --flash_freq keep --flash_size keep \
+            "$boot_offset" "$folder/bootloader.bin" \
+            0x8000 "$folder/partitions.bin" \
+            0x10000 "$folder/${chip}_gpio_debugger_v${version}.bin" \
+            0x180000 "$folder/spiffs.bin"
+
+          cp "$folder/${chip}_gpio_debugger_full_v${version}.bin" "$ota_dir/full.bin"
+
+          cat > "$ota_dir/manifest.json" <<EOF
+          {
+            "name": "ESP32 Web Debugger (${{ matrix.target.ota_dir }})",
+            "version": "${version}",
+            "new_install_prompt_erase": false,
+            "builds": [
+              {
+                "chipFamily": "${{ matrix.target.ota_dir }}",
+                "parts": [
+                  { "path": "bootloader.bin", "offset": ${boot_offset_dec} },
+                  { "path": "partitions.bin", "offset": 32768 },
+                  { "path": "firmware.bin", "offset": 65536 },
+                  { "path": "spiffs.bin", "offset": 1572864 }
+                ]
+              }
+            ]
+          }
+          EOF
+
+          zip -j "release/zips/${chip}_gpio_debugger_update_v${version}.zip" "$folder/${chip}_gpio_debugger_v${version}.bin" "$folder/spiffs.bin"
+          zip -j "release/zips/${chip}_gpio_debugger_full_v${version}.zip" "$folder/${chip}_gpio_debugger_full_v${version}.bin" "$folder/bootloader.bin" "$folder/partitions.bin" "$folder/spiffs.bin"
+
+      - name: Upload firmware zip artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: firmware-zips-${{ matrix.target.chip }}
+          path: release/zips/*.zip
+
+      - name: Upload OTA artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ota-files-${{ matrix.target.chip }}
+          path: release/ota/
+
+  release:
+    runs-on: [self-hosted, manupa-hnx]
+    needs: build
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - name: Configure Git safe directory
+        run: git config --global --add safe.directory '*'
+      - name: Set VERSION environment variable from file
+        run: echo "VERSION=$(head -1 version)" >> $GITHUB_ENV
+
+      - name: Check if Git tag already exists
+        run: |
+          TAG="v${{ env.VERSION }}"
+          if git show-ref --tags --verify --quiet "refs/tags/${TAG}" && [[ "${TAG}" != *"DEV"* ]]; then
+            echo "Tag ${TAG} already exists, updating existing release."
+          fi
+
+      - name: Download all firmware artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: release_artifacts
+      
+      - name: Organize downloaded artifacts
+        run: |
+          mkdir -p release_final
+          find release_artifacts -name "*.zip" -exec mv {} release_final/ \;
+
+      - name: Create changelog from version file
+        run: tail -n +3 version | sed 's/^/- /' > changelog
+
+      - name: Create or update release
+        uses: ncipollo/release-action@v1
+        with:
+          allowUpdates: true
+          name: v${{ env.VERSION }}
+          tag: v${{ env.VERSION }}
+          draft: false
+          bodyFile: "changelog"
+          artifacts: "release_final/*.zip"
+
+  deploy:
+    runs-on: [self-hosted, manupa-hnx]
+    needs: build
+    if: github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - name: Configure Git safe directory
+        run: git config --global --add safe.directory '*'
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: all_artifacts
+      
+      - name: Assemble GitHub Pages and OTA directory
+        run: |
+          mkdir -p final_ota_dir/zips
+          cp -r docs/. final_ota_dir/
+          cp version final_ota_dir/
+
+          find all_artifacts -maxdepth 1 -name "ota-files-*" -type d | while read -r dir; do
+            cp -r "$dir"/* final_ota_dir/
+          done
+
+          find all_artifacts -name "*.zip" -exec cp {} final_ota_dir/zips/ \;
+
+      - name: Deploy Web Flasher & Firmware to gh-pages
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          folder: final_ota_dir
+          branch: gh-pages
+
+      - name: Set release branch for dev
+        if: github.ref == 'refs/heads/dev'
+        run: echo "RELEASE_BRANCH=releases-staging" >> $GITHUB_ENV
+
+      - name: Set release branch for main/master
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+        run: echo "RELEASE_BRANCH=releases-production" >> $GITHUB_ENV
+
+      - name: Deploy OTA branch
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          folder: final_ota_dir
+          branch: ${{ env.RELEASE_BRANCH }}

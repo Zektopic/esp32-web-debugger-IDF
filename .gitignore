@@ -1,0 +1,55 @@
+# Build directory
+build/
+
+# ESP-IDF specific
+sdkconfig
+sdkconfig.old
+
+# IDE specific
+.vscode/
+.idea/
+
+# Prerequisites
+*.d
+
+# Object files
+*.o
+*.ko
+*.obj
+*.elf
+
+# Linker output
+*.ilk
+*.map
+*.exp
+
+# Libraries
+*.lib
+*.a
+*.la
+*.lo
+
+# Shared objects
+*.dll
+*.so
+*.so.*
+*.dylib
+
+# Debug files
+*.dSYM/
+*.su
+*.idb
+*.pdb
+
+# Executables
+*.exe
+*.out
+*.app
+*.i*86
+*.x86_64
+*.hex
+
+# Project specific
+*.bin
+!docs/**/*.bin
+*.cache/

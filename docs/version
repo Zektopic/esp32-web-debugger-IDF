@@ -1,0 +1,7 @@
+1.1.0
+
+Benchmark suite: CPU, RAM/PSRAM, flash, crypto accelerators, RTOS, GPIO, UART, I2C, LEDs, ULP/LP core, CPU temperature and Wi-Fi
+Runs on any Wi-Fi capable ESP32 (ESP32, S2, S3, C2, C3, C6): pins, ADC channels and features are detected per chip
+New tabbed web UI with chip overview, live telemetry, scope with calibrated ADC and benchmark export (JSON/CSV)
+Fixes: PWM mode and channel allocation, oscilloscope pin selection, UART/I2C pins no longer reset by the GPIO grid, WebSocket client cleanup and command validation, static file routing
+Wi-Fi credentials moved to menuconfig; automatic reconnect
