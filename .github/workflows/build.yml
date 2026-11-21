@@ -1,5 +1,8 @@
 name: Build and Release Firmware
 
+permissions:
+  contents: read
+
 on:
   push:
   workflow_dispatch:
@@ -22,7 +25,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -110,13 +113,13 @@ jobs:
           zip -j "release/zips/${chip}_gpio_debugger_full_v${version}.zip" "$folder/${chip}_gpio_debugger_full_v${version}.bin" "$folder/bootloader.bin" "$folder/partitions.bin" "$folder/spiffs.bin"
 
       - name: Upload firmware zip artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: firmware-zips-${{ matrix.target.chip }}
           path: release/zips/*.zip
 
       - name: Upload OTA artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ota-files-${{ matrix.target.chip }}
           path: release/ota/
@@ -128,7 +131,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Configure Git safe directory
         run: git config --global --add safe.directory '*'
       - name: Set VERSION environment variable from file
@@ -142,7 +145,7 @@ jobs:
           fi
 
       - name: Download all firmware artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: release_artifacts
       
@@ -171,12 +174,12 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Configure Git safe directory
         run: git config --global --add safe.directory '*'
 
       - name: Download all build artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: all_artifacts
       
